@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Write a miniature assets repo for the installer and CLI tests.
 
-Payloads are random bytes of realistic size, so the tests exercise digest
-verification and the space check without downloading anything.
+Payloads are realistic in size so the tests exercise digest verification and
+the space check without downloading anything. Anything that installs as an apk
+is a real zip, because the builder opens archives rather than trusting their
+digests, and random bytes would be rejected exactly as a corrupt dump is.
 """
 
 import hashlib
+import io
 import json
 import os
 import random
 import sys
+import zipfile
 
 PACKAGES = [
     # id, name, category, path, asset, KiB, extra
@@ -72,7 +76,15 @@ def main(root: str) -> int:
     rng = random.Random(42)
 
     def blob(name: str, kib: int) -> tuple[str, int]:
-        data = bytes(rng.getrandbits(8) for _ in range(kib * 1024))
+        filler = bytes(rng.getrandbits(8) for _ in range(kib * 1024))
+        if name.endswith((".apk", ".apex", ".jar")):
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
+                z.writestr("AndroidManifest.xml", "<manifest/>")
+                z.writestr("classes.dex", filler)
+            data = buf.getvalue()
+        else:
+            data = filler
         with open(os.path.join(assets, name), "wb") as f:
             f.write(data)
         return hashlib.sha256(data).hexdigest(), len(data)
