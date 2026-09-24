@@ -40,12 +40,20 @@ Useful flags:
 ## Output formats
 
 **`recovery`** — a recovery-flashable zip for TWRP or LineageOS recovery. No root
-needed. The installer mounts the target partitions read-write (handling dynamic
-`super` partitions), checks free space before writing anything, removes the AOSP
-apps the selection supersedes, streams each payload straight out of the zip onto
-the partition, applies build properties, and installs an `addon.d` script so the
-gapps survive a ROM dirty-flash. It refuses to install on a ROM whose API level
-does not match the package.
+needed. The installer resolves the active A/B slot and the partition block
+devices, mounts them read-write (clearing the read-only flag on dynamic `super`
+partitions and confirming writability by writing), checks free space before
+writing anything, removes the AOSP apps the selection supersedes, streams each
+payload straight out of the zip onto the partition, verifies it by SHA-256,
+recreates symlinks, applies build properties, and installs an `addon.d` script
+so the gapps survive a ROM dirty-flash. It refuses to install on a ROM whose API
+level does not match the package.
+
+It bundles a static busybox so it runs against one predictable toolset rather
+than whatever applets a given recovery happens to ship. If that binary will not
+run, the installer falls back to the recovery's own tools rather than refusing.
+Pass `-no-busybox` to leave it out. BusyBox is GPLv2 and the zip carries the
+source offer alongside it.
 
 **`module`** — a Magisk or KernelSU module. Requires root. Files are overlaid
 rather than written into the ROM, superseded AOSP apps are masked with `.replace`
@@ -136,6 +144,9 @@ test/ota            drives the ota target against a synthetic target-files packa
 - **Builds are reproducible.** The same selection produces a byte-identical zip:
   entries are path-sorted with a fixed timestamp, and already-compressed formats
   are stored rather than re-deflated.
+- **Symlinks are preserved.** Real dumps link an app's native libraries in from
+  the partition's `lib64`; copying the link as a regular file, or dropping it,
+  leaves an app that will not start.
 
 ## Testing
 

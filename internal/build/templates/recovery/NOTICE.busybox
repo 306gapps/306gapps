@@ -1,0 +1,17 @@
+This package bundles BusyBox, which is licensed under the GNU General Public
+License version 2.
+
+BusyBox is Copyright (C) its many contributors. It is included here unmodified,
+as built and distributed by the Magisk project.
+
+Complete corresponding source code for this BusyBox build is available from:
+
+  https://github.com/topjohnwu/ndk-busybox
+
+and the upstream project at:
+
+  https://busybox.net/
+
+306gapps itself is not derived from BusyBox and is distributed separately;
+BusyBox is merely included alongside it so the installer has a predictable set
+of tools in recovery.

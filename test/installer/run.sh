@@ -19,6 +19,26 @@ check() {
   fi
 }
 
+# Rewrite one digest so the installer must reject the payload it names.
+corrupt_payload_is_refused() {
+  local bad="$WORK/bad.zip" out="$WORK/badlog"
+  rm -rf "$WORK/rebuild"; mkdir -p "$WORK/rebuild"
+  ( cd "$WORK/rebuild" && unzip -q -o "$ZIP" )
+  sed -i 's|^product/priv-app/Velvet/Velvet.apk  .*|product/priv-app/Velvet/Velvet.apk  '"$(printf 'f%.0s' $(seq 64))"'|' \
+    "$WORK/rebuild/installer/digests.txt"
+  ( cd "$WORK/rebuild" && zip -qr "$bad" . )
+
+  local rom2="$WORK/rom2"
+  rm -rf "$rom2"; mkdir -p "$rom2/system/system/addon.d"
+  printf 'ro.build.version.sdk=36\n' > "$rom2/system/system/build.prop"
+  rm -rf "$WORK/tmp2"; mkdir -p "$WORK/tmp2"
+  unzip -q -o "$bad" 'installer/*' -d "$WORK/tmp2"
+  if busybox ash "$HERE/harness.sh" "$WORK/tmp2" "$bad" "$rom2" > "$out" 2>&1; then
+    return 1
+  fi
+  grep -q "corrupt payload" "$out"
+}
+
 ZIP="$WORK/gapps.zip"
 GAPPS_CACHE="$WORK/cache" "$BIN" build -source "$FIXTURE" \
   -packages gsa,photos,dialer-google -out "$ZIP" >/dev/null 2>&1
@@ -66,6 +86,11 @@ check "addon.d script installed"       '[ -x "$ROM/system/system/addon.d/69-306g
 check "install record written"         '[ -s "$ROM/system/system/etc/306gapps/files.list" ]'
 check "no scratch file left behind"    '[ -z "$(find "$ROM" -name ".306gapps.part")" ]'
 check "apk mode is 0644"               '[ "$(stat -c%a "$ROM/product/priv-app/Velvet/Velvet.apk")" = "644" ]'
+check "symlink created, not copied"    '[ -L "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so" ]'
+check "symlink points at its target"   '[ "$(readlink "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so")" = "/product/lib64/libjni.so" ]'
+check "digests shipped for payloads"   'unzip -p "$ZIP" installer/digests.txt | grep -q "product/priv-app/Velvet/Velvet.apk  "'
+check "no digest line for the symlink" '! unzip -p "$ZIP" installer/digests.txt | grep -q libjni'
+check "corrupt payload is refused"     'corrupt_payload_is_refused'
 
 echo "== rejects a mismatched ROM =="
 sed -i 's/ro.build.version.sdk=36/ro.build.version.sdk=34/' "$ROM/system/system/build.prop"

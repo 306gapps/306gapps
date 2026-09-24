@@ -23,5 +23,22 @@ mkdir -p "$TMP" || abort "cannot create $TMP"
 unzip -o "$ZIPFILE" 'installer/*' -d "$TMP" >/dev/null 2>&1 || abort "failed to unpack installer"
 chmod -R 0755 "$TMP/installer"
 
-export OUTFD ZIPFILE TMP
+# Recovery environments vary enormously in which applets they provide and how
+# those applets behave. We ship a known-good static busybox and put it first on
+# PATH so the installer runs against one predictable toolset. If it will not
+# run -- wrong architecture, noexec /tmp -- fall back to the recovery's own
+# tools rather than refusing to install.
+BB="$TMP/installer/busybox"
+if [ -f "$BB" ]; then
+  chmod 0755 "$BB"
+  if "$BB" true 2>/dev/null; then
+    mkdir -p "$TMP/bin"
+    if "$BB" --install -s "$TMP/bin" 2>/dev/null; then
+      export PATH="$TMP/bin:$PATH"
+      export BUSYBOX="$BB"
+    fi
+  fi
+fi
+
+export OUTFD ZIPFILE TMP BUSYBOX
 . "$TMP/installer/installer.sh"

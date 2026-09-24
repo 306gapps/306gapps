@@ -32,6 +32,16 @@ type Release struct {
 	Created time.Time `json:"created"`
 	// AssetBase is the URL prefix every File.Asset is resolved against.
 	AssetBase string `json:"asset_base"`
+	// Arch is the device architecture the payloads target; empty means arm64.
+	Arch string `json:"arch,omitempty"`
+}
+
+// Architecture returns the release's arch, defaulting to arm64.
+func (r Release) Architecture() string {
+	if r.Arch == "" {
+		return "arm64"
+	}
+	return r.Arch
 }
 
 type Android struct {
@@ -80,19 +90,26 @@ const (
 	KindLib        Kind = "lib"
 	KindFramework  Kind = "framework"
 	KindEtc        Kind = "etc"
+	// KindSymlink is a link rather than a payload: it carries a Target and no asset.
+	KindSymlink Kind = "symlink"
 )
 
 type File struct {
 	// Path is partition-relative, e.g. "product/priv-app/Foo/Foo.apk".
 	Path string `json:"path"`
-	// Asset is the payload name within the release's asset bundle.
-	Asset   string `json:"asset"`
-	SHA256  string `json:"sha256"`
+	// Asset is the payload name within the release's asset bundle, empty for symlinks.
+	Asset   string `json:"asset,omitempty"`
+	SHA256  string `json:"sha256,omitempty"`
 	Size    int64  `json:"size"`
 	Mode    string `json:"mode"`
 	Context string `json:"context,omitempty"`
 	Kind    Kind   `json:"kind"`
+	// Target is the link destination, set only when Kind is KindSymlink.
+	Target string `json:"target,omitempty"`
 }
+
+// IsSymlink reports whether this entry is a link rather than a payload.
+func (f File) IsSymlink() bool { return f.Kind == KindSymlink }
 
 // Partition returns the partition a file installs to.
 func (f File) Partition() string {
@@ -211,14 +228,27 @@ func (m *Manifest) Validate() error {
 				add("%s: path %q also provided by %s", where, f.Path, prev)
 			}
 			paths[f.Path] = p.ID
-			if len(f.SHA256) != 64 {
-				add("%s: file %q has malformed sha256", where, f.Path)
-			}
 			if f.Size < 0 {
 				add("%s: file %q has negative size", where, f.Path)
 			}
-			if f.Asset == "" {
-				add("%s: file %q has no asset", where, f.Path)
+			if f.IsSymlink() {
+				switch {
+				case f.Target == "":
+					add("%s: symlink %q has no target", where, f.Path)
+				case f.Asset != "" || f.SHA256 != "":
+					add("%s: symlink %q must not carry a payload", where, f.Path)
+				case path.IsAbs(f.Target) && !targetsKnownPartition(f.Target):
+					// An absolute target outside our partitions is a dump error.
+					add("%s: symlink %q points at %q, which is outside the "+
+						"partitions this package installs to", where, f.Path, f.Target)
+				}
+			} else {
+				if len(f.SHA256) != 64 {
+					add("%s: file %q has malformed sha256", where, f.Path)
+				}
+				if f.Asset == "" {
+					add("%s: file %q has no asset", where, f.Path)
+				}
 			}
 		}
 	}
@@ -254,6 +284,17 @@ func (m *Manifest) Validate() error {
 		return fmt.Errorf("invalid manifest:\n  - %s", strings.Join(errs, "\n  - "))
 	}
 	return nil
+}
+
+func targetsKnownPartition(target string) bool {
+	clean := path.Clean(target)
+	for _, part := range Partitions {
+		if clean == "/"+part || strings.HasPrefix(clean, "/"+part+"/") {
+			return true
+		}
+	}
+	// system-as-root devices reach /system through /system/system.
+	return strings.HasPrefix(clean, "/system/")
 }
 
 func validPartition(p string) bool {

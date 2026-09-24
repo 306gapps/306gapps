@@ -182,25 +182,37 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 		part, rel, _ := strings.Cut(e.Path, "/")
 		name := tfDir(part) + "/" + rel
 
-		src, err := os.Open(e.Local)
-		if err != nil {
-			return nil, err
-		}
-		hdr := &zip.FileHeader{Name: name, Method: zip.Deflate, Modified: epoch}
-		hdr.SetMode(e.Mode)
-		if isStored(name) {
-			hdr.Method = zip.Store
-		}
-		w, err := zw.CreateHeader(hdr)
-		if err != nil {
+		if e.IsSymlink() {
+			hdr := &zip.FileHeader{Name: name, Method: zip.Store, Modified: epoch}
+			hdr.SetMode(os.ModeSymlink | 0o777)
+			w, err := zw.CreateHeader(hdr)
+			if err != nil {
+				return nil, err
+			}
+			if _, err := io.WriteString(w, e.Target); err != nil {
+				return nil, fmt.Errorf("write symlink %s: %w", name, err)
+			}
+		} else {
+			src, err := os.Open(e.Local)
+			if err != nil {
+				return nil, err
+			}
+			hdr := &zip.FileHeader{Name: name, Method: zip.Deflate, Modified: epoch}
+			hdr.SetMode(e.Mode)
+			if isStored(name) {
+				hdr.Method = zip.Store
+			}
+			w, err := zw.CreateHeader(hdr)
+			if err != nil {
+				src.Close()
+				return nil, err
+			}
+			if _, err := io.Copy(w, src); err != nil {
+				src.Close()
+				return nil, fmt.Errorf("write %s: %w", name, err)
+			}
 			src.Close()
-			return nil, err
 		}
-		if _, err := io.Copy(w, src); err != nil {
-			src.Close()
-			return nil, fmt.Errorf("write %s: %w", name, err)
-		}
-		src.Close()
 
 		cfg := fsConfigs[part]
 		if cfg == nil {
@@ -215,9 +227,13 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 				cfg.set(dir, 0, 0, 0o755, "capabilities=0x0")
 			}
 		}
-		cfg.set(rel, 0, 0, uint32(e.Mode.Perm()), "capabilities=0x0")
+		mode := uint32(e.Mode.Perm())
+		if e.IsSymlink() {
+			mode = 0o777
+		}
+		cfg.set(rel, 0, 0, mode, "capabilities=0x0")
 
-		if strings.HasSuffix(rel, ".apk") {
+		if strings.HasSuffix(rel, ".apk") && !e.IsSymlink() {
 			certs.addPresigned(path.Base(rel), part)
 		}
 

@@ -31,6 +31,11 @@ ui_print " release $RELEASE"
 ui_print " Android $ANDROID (API $APILEVEL), $PKGCOUNT packages"
 ui_print "========================================="
 ui_print " "
+if [ -n "$BUSYBOX" ]; then
+  log "using bundled $($BUSYBOX 2>&1 | head -n1)"
+else
+  ui_print "- no bundled busybox; using the recovery's own tools"
+fi
 
 # ---- verify the ROM matches ------------------------------------------------
 
@@ -109,7 +114,12 @@ TOTAL=$(wc -l < "$LIST" | tr -d ' ')
 N=0
 ui_print "- installing $TOTAL files"
 
-while IFS="$(printf '\t')" read -r rel mode ctx size; do
+# Digest verification is far stronger than a size check, and the bundled
+# busybox provides sha256sum even when the recovery does not.
+HAVE_SHA=0
+command -v sha256sum >/dev/null 2>&1 && HAVE_SHA=1
+
+while IFS="$(printf '\t')" read -r rel mode ctx size link; do
   [ -z "$rel" ] && continue
   N=$((N + 1))
   part=${rel%%/*}
@@ -117,6 +127,14 @@ while IFS="$(printf '\t')" read -r rel mode ctx size; do
   dest="$target/${rel#*/}"
 
   mkdir -p "$(dirname "$dest")" || abort "cannot create $(dirname "$dest")"
+
+  # A fifth column names a link target; such records carry no payload.
+  if [ -n "$link" ]; then
+    rm -rf "$dest"
+    ln -s "$link" "$dest" || abort "cannot link $rel -> $link"
+    log "link $rel -> $link"
+    continue
+  fi
 
   # Stream out of the zip onto the destination filesystem so the install never
   # needs room for a second copy, and never fills tmpfs.
@@ -129,6 +147,16 @@ while IFS="$(printf '\t')" read -r rel mode ctx size; do
   if [ "$actual" != "$size" ]; then
     rm -f "$scratch"
     abort "size mismatch for $rel: expected $size, got $actual"
+  fi
+  if [ "$HAVE_SHA" = 1 ]; then
+    want=$(sed -n "s|^$rel  ||p" "$TMP/installer/digests.txt" 2>/dev/null | head -n1)
+    if [ -n "$want" ]; then
+      got=$(sha256sum "$scratch" | cut -d" " -f1)
+      if [ "$got" != "$want" ]; then
+        rm -f "$scratch"
+        abort "corrupt payload for $rel"
+      fi
+    fi
   fi
   mv -f "$scratch" "$dest" || abort "cannot write $dest"
   set_meta "$dest" "$mode" "$ctx"

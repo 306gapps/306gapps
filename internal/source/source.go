@@ -24,6 +24,25 @@ type Index struct {
 	Repo     string       `json:"repo"`
 	Updated  time.Time    `json:"updated"`
 	Releases []ReleaseRef `json:"releases"`
+	// Tools are helper binaries, versioned with the assets repo so a new busybox
+	// does not need a new release of the builder.
+	Tools Tools `json:"tools,omitempty"`
+}
+
+// Tools lists helper binaries, keyed by device architecture.
+type Tools struct {
+	Busybox map[string]Payload `json:"busybox,omitempty"`
+}
+
+// Payload is a single downloadable, verified blob.
+type Payload struct {
+	Asset  string `json:"asset"`
+	SHA256 string `json:"sha256"`
+	Size   int64  `json:"size"`
+	// Base is the URL prefix Asset resolves against, when it is not the source root.
+	Base string `json:"base,omitempty"`
+	// Version is informational, e.g. "1.36.1.1 (Magisk v30.7)".
+	Version string `json:"version,omitempty"`
 }
 
 // ReleaseRef points at one published Pixel dump.
@@ -155,9 +174,7 @@ func (s *Source) Index(ctx context.Context) (*Index, error) {
 	if idx.Schema != IndexSchema {
 		return nil, fmt.Errorf("index schema %d unsupported (want %d)", idx.Schema, IndexSchema)
 	}
-	if len(idx.Releases) == 0 {
-		return nil, fmt.Errorf("index lists no releases")
-	}
+	// A fresh assets repo legitimately has no releases yet; the caller decides if that matters.
 	return &idx, nil
 }
 
@@ -214,6 +231,37 @@ func (s *Source) Fetch(ctx context.Context, m *manifest.Manifest, f manifest.Fil
 		return "", fmt.Errorf("cache %s: %w", f.Path, err)
 	}
 	return path, nil
+}
+
+// FetchPayload downloads and verifies a helper binary into the same cache as release payloads.
+func (s *Source) FetchPayload(ctx context.Context, p Payload) (string, error) {
+	if p.Asset == "" || p.SHA256 == "" {
+		return "", fmt.Errorf("payload is incomplete")
+	}
+	if s.Cache.Has(p.SHA256) {
+		return s.Cache.Get(p.SHA256)
+	}
+	ref := p.Asset
+	if p.Base != "" && !strings.Contains(ref, "://") {
+		ref = strings.TrimSuffix(p.Base, "/") + "/" + ref
+	}
+	rc, _, err := s.open(ctx, ref)
+	if err != nil {
+		return "", fmt.Errorf("fetch %s: %w", p.Asset, err)
+	}
+	defer rc.Close()
+
+	path, err := s.Cache.Put(p.SHA256, rc)
+	if err != nil {
+		return "", fmt.Errorf("cache %s: %w", p.Asset, err)
+	}
+	return path, nil
+}
+
+// BusyboxFor returns the busybox payload for an architecture, if published.
+func (i *Index) BusyboxFor(arch string) (Payload, bool) {
+	p, ok := i.Tools.Busybox[arch]
+	return p, ok
 }
 
 type progressReader struct {

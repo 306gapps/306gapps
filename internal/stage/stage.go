@@ -21,7 +21,14 @@ type Entry struct {
 	Context string
 	Kind    manifest.Kind
 	Size    int64
+	// SHA256 lets the installer re-verify the payload on the device.
+	SHA256 string
+	// Target is the link destination for symlink entries, which have no Local.
+	Target string
 }
+
+// IsSymlink reports whether this entry is a link rather than a payload.
+func (e Entry) IsSymlink() bool { return e.Kind == manifest.KindSymlink }
 
 // Plan is everything a builder needs to emit a package.
 type Plan struct {
@@ -97,6 +104,13 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 			defer wg.Done()
 			for i := range jobs {
 				f := res.Files[i]
+				if f.IsSymlink() {
+					entries[i] = Entry{
+						Path: f.Path, Mode: f.FileMode(), Context: f.Context,
+						Kind: f.Kind, Target: f.Target,
+					}
+					continue
+				}
 				local, err := src.Fetch(ctx, m, f, opt.Progress)
 				if err != nil {
 					mu.Lock()
@@ -108,6 +122,7 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 				entries[i] = Entry{
 					Path: f.Path, Local: local, Mode: f.FileMode(),
 					Context: f.Context, Kind: f.Kind, Size: f.Size,
+					SHA256: f.SHA256,
 				}
 			}
 		}()

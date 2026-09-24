@@ -221,3 +221,146 @@ func TestParseTarget(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+// symlinkPlan mirrors testPlan but includes a link, which carries a target and
+// no payload.
+func symlinkPlan(t *testing.T) *stage.Plan {
+	t.Helper()
+	p := testPlan(t)
+	p.Entries = append(p.Entries, stage.Entry{
+		Path:   "product/priv-app/GmsCore/lib/arm64/libjni.so",
+		Mode:   0o777,
+		Kind:   manifest.KindSymlink,
+		Target: "/product/lib64/libjni.so",
+	})
+	return p
+}
+
+func TestRecoveryRecordsSymlinksInTheWorkList(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "r.zip")
+	if _, err := Build(symlinkPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+
+	var list string
+	for _, f := range zr.File {
+		if f.Name == "files/product/priv-app/GmsCore/lib/arm64/libjni.so" {
+			t.Error("a symlink must not be carried as a payload")
+		}
+		if f.Name == "installer/files.list" {
+			rc, _ := f.Open()
+			b := make([]byte, f.UncompressedSize64)
+			rc.Read(b)
+			rc.Close()
+			list = string(b)
+		}
+	}
+	want := "product/priv-app/GmsCore/lib/arm64/libjni.so\t0777\tu:object_r:system_file:s0\t0\t/product/lib64/libjni.so"
+	if !strings.Contains(list, want) {
+		t.Errorf("files.list missing the link record:\n%s", list)
+	}
+}
+
+func TestRecoveryDigestListSkipsSymlinks(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "r.zip")
+	if _, err := Build(symlinkPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.OpenReader(out)
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.Name != "installer/digests.txt" {
+			continue
+		}
+		rc, _ := f.Open()
+		b := make([]byte, f.UncompressedSize64)
+		rc.Read(b)
+		rc.Close()
+		if strings.Contains(string(b), "libjni.so") {
+			t.Errorf("a symlink has no digest to record:\n%s", b)
+		}
+		return
+	}
+	t.Fatal("digests.txt missing")
+}
+
+func TestModuleWritesARealSymlink(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "m.zip")
+	if _, err := Build(symlinkPlan(t), Options{Target: TargetModule, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+
+	for _, f := range zr.File {
+		if f.Name != "system/product/priv-app/GmsCore/lib/arm64/libjni.so" {
+			continue
+		}
+		if f.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("entry is not marked as a symlink: mode %v", f.Mode())
+		}
+		rc, _ := f.Open()
+		b := make([]byte, f.UncompressedSize64)
+		rc.Read(b)
+		rc.Close()
+		if string(b) != "/product/lib64/libjni.so" {
+			t.Errorf("link target wrong: %q", b)
+		}
+		return
+	}
+	t.Fatal("symlink entry missing from the module")
+}
+
+func TestBusyboxIsBundledWhenGiven(t *testing.T) {
+	bb := filepath.Join(t.TempDir(), "busybox")
+	if err := os.WriteFile(bb, []byte("\x7fELF-not-really"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "r.zip")
+	if _, err := Build(testPlan(t), Options{Target: TargetRecovery, Out: out, Busybox: bb}); err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.OpenReader(out)
+	defer zr.Close()
+	var hasBB, hasNotice bool
+	for _, f := range zr.File {
+		switch f.Name {
+		case "installer/busybox":
+			hasBB = true
+			if f.Mode().Perm()&0o111 == 0 {
+				t.Errorf("busybox is not executable: %v", f.Mode())
+			}
+		case "installer/NOTICE.busybox":
+			hasNotice = true
+		}
+	}
+	if !hasBB {
+		t.Error("busybox not bundled")
+	}
+	// Shipping a GPLv2 binary obliges us to carry the source offer with it.
+	if !hasNotice {
+		t.Error("busybox bundled without its licence notice")
+	}
+}
+
+func TestBusyboxIsOptional(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "r.zip")
+	if _, err := Build(testPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.OpenReader(out)
+	defer zr.Close()
+	for _, f := range zr.File {
+		if strings.Contains(f.Name, "busybox") {
+			t.Errorf("unexpected %s when no busybox was given", f.Name)
+		}
+	}
+}

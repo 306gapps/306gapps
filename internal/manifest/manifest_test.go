@@ -110,3 +110,60 @@ func TestFileModeAndPartition(t *testing.T) {
 		t.Fatal("want default 0644")
 	}
 }
+
+func TestValidateAcceptsASymlink(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/priv-app/GmsCore/lib/arm64/libjni.so",
+		Mode: "0777", Kind: KindSymlink, Target: "/product/lib64/libjni.so",
+	})
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateAcceptsARelativeSymlink(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/lib/arm64/libx.so",
+		Mode: "0777", Kind: KindSymlink, Target: "../../../../lib64/libx.so",
+	})
+	if err := m.Validate(); err != nil {
+		t.Fatalf("relative link targets are legitimate: %v", err)
+	}
+}
+
+func TestValidateRejectsSymlinkWithoutTarget(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/x.so", Mode: "0777", Kind: KindSymlink,
+	})
+	wantErr(t, m, "has no target")
+}
+
+func TestValidateRejectsSymlinkCarryingAPayload(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/x.so", Mode: "0777", Kind: KindSymlink,
+		Target: "/product/lib64/x.so", Asset: "x.so", SHA256: digest,
+	})
+	wantErr(t, m, "must not carry a payload")
+}
+
+func TestValidateRejectsSymlinkLeavingTheInstalledPartitions(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/x.so", Mode: "0777", Kind: KindSymlink,
+		Target: "/data/local/tmp/evil.so",
+	})
+	wantErr(t, m, "outside the partitions")
+}
+
+func TestArchitectureDefaultsToArm64(t *testing.T) {
+	if (Release{}).Architecture() != "arm64" {
+		t.Error("want arm64 by default")
+	}
+	if (Release{Arch: "arm"}).Architecture() != "arm" {
+		t.Error("explicit arch ignored")
+	}
+}

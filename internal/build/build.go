@@ -69,6 +69,9 @@ type Options struct {
 	Target Target
 	// Out is the output zip path.
 	Out string
+	// Busybox is an optional static binary bundled with the recovery installer so
+	// it runs against one known toolset instead of whatever the recovery provides.
+	Busybox string
 	// Signing configures the OTA target; ignored by the others.
 	Signing SigningOptions
 	// Progress is called after each file is written.
@@ -213,6 +216,25 @@ func (w *writer) addBytes(name string, mode os.FileMode, content []byte) error {
 	}
 	if _, err := dst.Write(content); err != nil {
 		return fmt.Errorf("write %s: %w", name, err)
+	}
+	w.seen[name] = true
+	w.count++
+	return nil
+}
+
+// addSymlink records a link: the target goes in the entry body with the symlink mode bit set.
+func (w *writer) addSymlink(name, target string) error {
+	if w.seen[name] {
+		return fmt.Errorf("duplicate archive entry %q", name)
+	}
+	hdr := &zip.FileHeader{Name: name, Method: zip.Store, Modified: epoch}
+	hdr.SetMode(os.ModeSymlink | 0o777)
+	dst, err := w.zw.CreateHeader(hdr)
+	if err != nil {
+		return err
+	}
+	if _, err := io.WriteString(dst, target); err != nil {
+		return fmt.Errorf("write symlink %s: %w", name, err)
 	}
 	w.seen[name] = true
 	w.count++

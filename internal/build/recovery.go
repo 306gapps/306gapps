@@ -40,10 +40,25 @@ func buildRecovery(plan *stage.Plan, w *writer, opt Options) error {
 	if err := w.addBytes("installer/props.txt", 0o644, propsFile(plan)); err != nil {
 		return err
 	}
+	if err := w.addBytes("installer/digests.txt", 0o644, digestList(entries)); err != nil {
+		return err
+	}
+	if opt.Busybox != "" {
+		if err := w.addFile("installer/busybox", opt.Busybox, 0o755); err != nil {
+			return fmt.Errorf("bundle busybox: %w", err)
+		}
+		if err := w.addTemplate("installer/NOTICE.busybox", "recovery/NOTICE.busybox", 0o644); err != nil {
+			return err
+		}
+	}
 
 	for i, e := range entries {
-		if err := w.addFile("files/"+e.Path, e.Local, e.Mode); err != nil {
-			return err
+		// Symlinks are created by the installer from files.list; there is
+		// nothing to carry in the archive.
+		if !e.IsSymlink() {
+			if err := w.addFile("files/"+e.Path, e.Local, e.Mode); err != nil {
+				return err
+			}
 		}
 		if opt.Progress != nil {
 			opt.Progress(i+1, len(entries))
@@ -60,7 +75,25 @@ func filesList(entries []stage.Entry) []byte {
 		if ctx == "" {
 			ctx = defaultContext(e.Path)
 		}
+		// A fifth field marks a symlink and names its target; records without
+		// it are payloads, so older readers see the same four columns.
+		if e.IsSymlink() {
+			fmt.Fprintf(&b, "%s\t%04o\t%s\t0\t%s\n", e.Path, e.Mode.Perm(), ctx, e.Target)
+			continue
+		}
 		fmt.Fprintf(&b, "%s\t%04o\t%s\t%d\n", e.Path, e.Mode.Perm(), ctx, e.Size)
+	}
+	return []byte(b.String())
+}
+
+// digestList lets the installer re-verify each payload on the device.
+func digestList(entries []stage.Entry) []byte {
+	var b strings.Builder
+	for _, e := range entries {
+		if e.IsSymlink() || e.SHA256 == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "%s  %s\n", e.Path, e.SHA256)
 	}
 	return []byte(b.String())
 }

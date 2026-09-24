@@ -156,6 +156,11 @@ func cmdList(ctx context.Context, args []string) error {
 		if *asJSON {
 			return json.NewEncoder(os.Stdout).Encode(idx.Releases)
 		}
+		if len(idx.Releases) == 0 {
+			fmt.Fprintln(os.Stderr,
+				"this source has published no releases yet")
+			return nil
+		}
 		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(w, "RELEASE\tANDROID\tDEVICE\tBUILD\tPUBLISHED")
 		refs := append([]source.ReleaseRef(nil), idx.Releases...)
@@ -216,6 +221,8 @@ func cmdBuild(ctx context.Context, args []string) error {
 	pkgKey := fs.String("ota-package-key", "", "ota: key signing the OTA, without extension (default <ota-keys>/releasekey)")
 	tools := fs.String("ota-tools", "", "ota: AOSP otatools bin directory (default: PATH)")
 	grow := fs.Bool("ota-grow", false, "ota: raise a partition's size budget if the selection overflows it")
+	noBusybox := fs.Bool("no-busybox", false,
+		"recovery: do not bundle busybox, use the recovery's own tools")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -277,6 +284,23 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "\r\033[Kall payloads verified")
 
+	// Recovery environments vary wildly; a bundled busybox makes one known toolset.
+	busybox := ""
+	if target == build.TargetRecovery && !*noBusybox {
+		arch := m.Release.Architecture()
+		if p, ok := idx.BusyboxFor(arch); ok {
+			busybox, err = s.FetchPayload(ctx, p)
+			if err != nil {
+				return fmt.Errorf("busybox for %s: %w", arch, err)
+			}
+			fmt.Fprintf(os.Stderr, "bundling busybox %s\n", p.Version)
+		} else {
+			fmt.Fprintf(os.Stderr,
+				"note: the source publishes no busybox for %s; "+
+					"the installer will use the recovery's own tools\n", arch)
+		}
+	}
+
 	dest := *out
 	if dest == "" {
 		dest = fmt.Sprintf("306gapps-%s-%s.zip", ref.ID, target)
@@ -288,8 +312,9 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 
 	result, err := build.Build(plan, build.Options{
-		Target: target,
-		Out:    dest,
+		Target:  target,
+		Out:     dest,
+		Busybox: busybox,
 		Signing: build.SigningOptions{
 			Base:       *base,
 			KeyDir:     *keys,

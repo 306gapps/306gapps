@@ -51,6 +51,13 @@ EXTRA_FILES = [
     ("gmscore", "product/etc/sysconfig/google.xml", "gms-sysconfig.xml", 3, "sysconfig"),
 ]
 
+# Links carry a target and no payload. Real dumps contain these where an app's
+# native libraries are shared from elsewhere on the partition.
+SYMLINKS = [
+    ("gmscore", "product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so",
+     "/product/lib64/libjni.so"),
+]
+
 
 def main(root: str) -> int:
     assets = os.path.join(root, "assets")
@@ -78,6 +85,11 @@ def main(root: str) -> int:
     by_id = {p["id"]: p for p in packages}
     for pid, path, asset, kib, kind in EXTRA_FILES:
         by_id[pid]["files"].append(entry(path, asset, kib, kind))
+    for pid, path, target in SYMLINKS:
+        by_id[pid]["files"].append({
+            "path": path, "size": 0, "mode": "0777",
+            "kind": "symlink", "target": target,
+        })
 
     release = {
         "id": "a16-bp41.250901.001",

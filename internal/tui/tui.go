@@ -42,6 +42,8 @@ type Model struct {
 	ctx    context.Context
 	src    *source.Source
 	outDir string
+	// busybox is resolved once the release is known.
+	busybox string
 
 	step step
 	err  error
@@ -327,10 +329,18 @@ func (m *Model) runBuild() tea.Msg {
 	m.toWrite.Store(int64(len(plan.Entries)))
 
 	target := m.targets[m.targetIdx]
+	if target == build.TargetRecovery && m.index != nil {
+		if p, ok := m.index.BusyboxFor(plan.Release.Architecture()); ok {
+			if local, err := m.src.FetchPayload(m.ctx, p); err == nil {
+				m.busybox = local
+			}
+		}
+	}
 	out := filepath.Join(m.outDir, fmt.Sprintf("306gapps-%s-%s.zip", plan.Release.ID, target))
 	res, err := build.Build(plan, build.Options{
 		Target:   target,
 		Out:      out,
+		Busybox:  m.busybox,
 		Progress: func(done, _ int) { m.written.Store(int64(done)) },
 	})
 	if err != nil {
