@@ -211,10 +211,11 @@ func cmdBuild(ctx context.Context, args []string) error {
 	out := fs.String("out", "", "output zip path (default: ./306gapps-<release>-<target>.zip)")
 	workers := fs.Int("workers", 4, "concurrent downloads")
 	// OTA-only inputs.
-	base := fs.String("ota-base", "", "ota: ROM target-files zip to merge into")
-	key := fs.String("ota-key", "", "ota: ROM release signing key (.pk8)")
-	cert := fs.String("ota-cert", "", "ota: ROM release certificate (.x509.pem)")
-	tools := fs.String("ota-tools", "", "ota: AOSP otatools bin directory")
+	base := fs.String("ota-base", "", "ota: your ROM's target-files zip (required)")
+	keys := fs.String("ota-keys", "", "ota: directory holding your ROM's release keys")
+	pkgKey := fs.String("ota-package-key", "", "ota: key signing the OTA, without extension (default <ota-keys>/releasekey)")
+	tools := fs.String("ota-tools", "", "ota: AOSP otatools bin directory (default: PATH)")
+	grow := fs.Bool("ota-grow", false, "ota: raise a partition's size budget if the selection overflows it")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -287,9 +288,18 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 
 	result, err := build.Build(plan, build.Options{
-		Target:  target,
-		Out:     dest,
-		Signing: build.SigningOptions{Base: *base, Key: *key, Cert: *cert, ToolsDir: *tools},
+		Target: target,
+		Out:    dest,
+		Signing: build.SigningOptions{
+			Base:       *base,
+			KeyDir:     *keys,
+			PackageKey: *pkgKey,
+			ToolsDir:   *tools,
+			Grow:       *grow,
+			Log: func(line string) {
+				fmt.Fprintf(os.Stderr, "\r\033[K%s\n", line)
+			},
+		},
 		Progress: func(done, total int) {
 			fmt.Fprintf(os.Stderr, "\r\033[Kpacking %d/%d", done, total)
 		},
@@ -302,9 +312,12 @@ func cmdBuild(ctx context.Context, args []string) error {
 	fmt.Printf("%s\n", result.Path)
 	fmt.Fprintf(os.Stderr, "%s · %d entries · sha256 %s\n",
 		human(result.Size), result.Files, result.SHA256)
-	if target == build.TargetOTA {
+	if target == build.TargetOTA && *keys == "" {
 		fmt.Fprintln(os.Stderr,
-			"\nthis is a target-files overlay, not a flashable zip;\nrun merge-and-sign.sh from inside it with your ROM's release key")
+			"\nthis is a merged target-files package, not a flashable zip.\n"+
+				"Sign it with your usual flow, or re-run with -ota-keys to have\n"+
+				"306gapps drive add_img_to_target_files, sign_target_files_apks\n"+
+				"and ota_from_target_files for you.")
 	}
 	return nil
 }

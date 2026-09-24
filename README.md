@@ -53,24 +53,60 @@ markers instead of deleted, and build properties are applied with `resetprop`, s
 disabling the module restores the stock ROM exactly. Much safer than the recovery
 route, and it survives OTAs.
 
-**`ota`** — a target-files overlay, **not a flashable zip**. See below.
+**`ota`** — a sideloadable A/B package, signed with your own ROM keys. For people
+who build and sign their own ROM. See below.
 
-### About the `ota` target
+### The `ota` target
 
-A sideloadable A/B package is verified by the device against the certificate in
-`/system/etc/security/otacerts.zip`, so it has to be signed with the ROM's own
-release key. Only whoever builds the ROM has that key — we cannot supply it and
-neither could a build service, so no tool can hand you a finished sideloadable
-gapps package.
+A sideloadable package is verified against the certificate in
+`/system/etc/security/otacerts.zip`, so it has to be signed with the key the
+device already trusts — the one you sign your ROM with. If you have that key,
+this target does the whole job:
 
-What this target does instead is the part that *can* be automated: it lays the
-payload out as a target-files overlay with the `filesystem_config` and
-`file_contexts` records the AOSP image builder needs, and generates
-`merge-and-sign.sh` with the exact `merge_target_files` → `add_img_to_target_files`
-→ `sign_target_files_apks` → `ota_from_target_files` invocation. Run that inside
-your ROM build tree, and you get a signed package your device will accept.
+```
+306gapps build -target ota \
+  -packages gsa,gboard,photos \
+  -ota-base  out/dist/aosp_cheetah-target_files-eng.zip \
+  -ota-keys  ~/keys \
+  -ota-tools out/host/linux-x86/bin \
+  -out       gapps-ota.zip
+```
 
-If you are not building your own ROM, use `recovery` or `module`.
+It merges the selection into your target-files package and then runs
+`add_img_to_target_files` → `sign_target_files_apks` → `ota_from_target_files`,
+leaving you a zip to `adb sideload`.
+
+Leave `-ota-keys` off and it stops at the merged target-files package, which you
+can take through your own signing flow.
+
+| flag | meaning |
+| --- | --- |
+| `-ota-base` | your ROM's `*-target_files-*.zip` (required) |
+| `-ota-keys` | directory holding `releasekey.pk8` / `releasekey.x509.pem` etc |
+| `-ota-package-key` | key signing the OTA itself, no extension (default `<keys>/releasekey`) |
+| `-ota-tools` | otatools `bin` directory (default: `PATH`) |
+| `-ota-grow` | raise a partition's size budget if the selection overflows it |
+
+What the merge does to your target-files package:
+
+- places payloads in `PRODUCT/`, `SYSTEM_EXT/`, `SYSTEM/`
+- records ownership and mode in each `META/*_filesystem_config.txt`, including
+  the parent directories, matching whichever path convention your package uses
+- marks every Google apk `PRESIGNED` in `META/apkcerts.txt` — they are signed
+  with Google's keys, and re-signing them would break GMS and Play Integrity
+- deletes superseded AOSP apps along with their `filesystem_config` and
+  `apkcerts` records
+- drops `IMAGES/` and `META/care_map.pb` so the images rebuild from the new trees
+- reports how much each partition grew against its budget in `misc_info.txt`
+
+SELinux labels are deliberately left alone: every path written falls under your
+ROM's existing generic `file_contexts` rules, which already resolve to
+`system_file`.
+
+The toolchain and keys are checked **before** the merge starts, so a missing
+binary fails in a second rather than after copying a multi-gigabyte package.
+
+If you do not build your own ROM, use `recovery` or `module`.
 
 ## Layout
 
@@ -81,10 +117,12 @@ internal/catalog    dependency and conflict resolution
 internal/source     release index, manifest fetch, content-addressed cache
 internal/stage      payload fetch and install-plan assembly
 internal/build      the three output targets
+internal/ota        target-files merge and AOSP signing chain
 internal/build/templates
                     installer shell scripts, embedded into the binary
 internal/tui        interactive picker
 test/installer      runs the real recovery installer against a fake ROM tree
+test/ota            drives the ota target against a synthetic target-files package
 ```
 
 ## Guarantees
@@ -103,12 +141,18 @@ test/installer      runs the real recovery installer against a fake ROM tree
 
 ```
 go test ./...
-./test/installer/run.sh <path-to-306gapps-binary> <fixture-dir>
+python3 test/installer/make_fixture.py /tmp/fixture
+./test/installer/run.sh /path/to/306gapps /tmp/fixture
+./test/ota/run.sh       /path/to/306gapps /tmp/fixture
 ```
 
 `test/installer` builds a real recovery zip, installs it into a fake ROM tree
 under busybox `ash`, and asserts the result — including that it refuses a
 mismatched Android version and a full partition.
+
+`test/ota` merges into a synthetic target-files package and drives stand-in AOSP
+binaries, asserting both the contents of the merge and the exact commands the
+signing chain runs.
 
 ## Licensing
 

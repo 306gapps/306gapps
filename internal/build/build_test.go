@@ -47,6 +47,15 @@ func testPlan(t *testing.T) *stage.Plan {
 	}
 }
 
+// TestOTARequiresABase documents that the ota target is useless without the
+// ROM's own package -- there is nothing generic to fall back on.
+func TestOTARequiresABase(t *testing.T) {
+	_, err := Build(testPlan(t), Options{Target: TargetOTA, Out: filepath.Join(t.TempDir(), "o.zip")})
+	if err == nil || !strings.Contains(err.Error(), "target-files") {
+		t.Fatalf("want a target-files error, got %v", err)
+	}
+}
+
 func buildTo(t *testing.T, target Target) (string, map[string]string) {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "out.zip")
@@ -143,41 +152,6 @@ func TestModulePathMapping(t *testing.T) {
 		if got := modulePath(in); got != want {
 			t.Errorf("modulePath(%q) = %q, want %q", in, got, want)
 		}
-	}
-}
-
-func TestOTAOverlayLayout(t *testing.T) {
-	_, files := buildTo(t, TargetOTA)
-	for _, want := range []string{
-		"PRODUCT/priv-app/GmsCore/GmsCore.apk",
-		"SYSTEM/priv-app/Setup/Setup.apk",
-		"META/product_filesystem_config.txt",
-		"META/product_file_contexts.txt",
-		"merge-and-sign.sh",
-	} {
-		if _, ok := files[want]; !ok {
-			t.Errorf("missing %s", want)
-		}
-	}
-	fsc := files["META/product_filesystem_config.txt"]
-	if !strings.Contains(fsc, "priv-app/GmsCore/GmsCore.apk 0 0 644 capabilities=0x0") {
-		t.Errorf("filesystem_config wrong:\n%s", fsc)
-	}
-	// Intermediate directories must be declared or the image builder omits them.
-	if !strings.Contains(fsc, "priv-app/GmsCore 0 0 755") || !strings.Contains(fsc, "priv-app 0 0 755") {
-		t.Errorf("parent dirs missing from filesystem_config:\n%s", fsc)
-	}
-	if !strings.Contains(files["merge-and-sign.sh"], "ota_from_target_files") {
-		t.Error("merge script missing ota_from_target_files step")
-	}
-}
-
-func TestFileContextsEscaping(t *testing.T) {
-	got := string(fileContexts([]stage.Entry{
-		{Path: "product/app/Foo+Bar/Foo.apk", Context: "u:object_r:system_file:s0"},
-	}))
-	if !strings.Contains(got, `/product/app/Foo\+Bar/Foo\.apk u:object_r:system_file:s0`) {
-		t.Errorf("regex specials not escaped:\n%s", got)
 	}
 }
 

@@ -272,7 +272,9 @@ func TestAllTargetsBuildFromSamePlan(t *testing.T) {
 		t.Fatal(err)
 	}
 	dir := t.TempDir()
-	for _, target := range build.Targets {
+	// The ota target needs a ROM target-files package, so it is covered in
+	// internal/ota rather than here.
+	for _, target := range []build.Target{build.TargetRecovery, build.TargetModule} {
 		out := filepath.Join(dir, string(target)+".zip")
 		r, err := build.Build(plan, build.Options{Target: target, Out: out})
 		if err != nil {

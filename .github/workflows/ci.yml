@@ -59,6 +59,9 @@ jobs:
           python3 test/installer/make_fixture.py /tmp/fixture
           ./test/installer/run.sh /tmp/306gapps /tmp/fixture
 
+      - name: Drive the ota target against a synthetic target-files package
+        run: ./test/ota/run.sh /tmp/306gapps /tmp/fixture
+
   cross:
     runs-on: ubuntu-latest
     strategy:

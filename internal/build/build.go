@@ -59,7 +59,7 @@ func (t Target) Description() string {
 	case TargetModule:
 		return "Magisk / KernelSU module (systemless, root required)"
 	case TargetOTA:
-		return "Sideloadable A/B update package (needs AOSP OTA tools and a signing key)"
+		return "Sideloadable A/B package, signed with your own ROM keys"
 	}
 	return string(t)
 }
@@ -92,6 +92,10 @@ func Build(plan *stage.Plan, opt Options) (*Result, error) {
 	if opt.Out == "" {
 		return nil, fmt.Errorf("no output path given")
 	}
+	// The OTA target shells out to the AOSP tools and manages its own output.
+	if opt.Target == TargetOTA {
+		return buildOTA(plan, opt)
+	}
 
 	tmp := opt.Out + ".partial"
 	f, err := os.Create(tmp)
@@ -111,8 +115,6 @@ func Build(plan *stage.Plan, opt Options) (*Result, error) {
 		err = buildRecovery(plan, zw, opt)
 	case TargetModule:
 		err = buildModule(plan, zw, opt)
-	case TargetOTA:
-		err = buildOTA(plan, zw, opt)
 	default:
 		err = fmt.Errorf("unknown target %q", opt.Target)
 	}
@@ -227,6 +229,18 @@ func (w *writer) addTemplate(name, tmpl string, mode os.FileMode) error {
 }
 
 func (w *writer) Close() error { return w.zw.Close() }
+
+// hashFile digests an already-open file from the start.
+func hashFile(f *os.File) (string, error) {
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
 
 // releaseInfo is the key=value block both installers read for display and the API guard.
 func releaseInfo(plan *stage.Plan) []byte {
