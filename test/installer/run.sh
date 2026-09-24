@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# Builds a recovery zip from the fixture, installs it into a fake ROM tree and
+# asserts the result. Usage: run.sh <306gapps-binary> <fixture-dir>
+set -euo pipefail
+
+BIN=$1
+FIXTURE=$2
+HERE=$(cd "$(dirname "$0")" && pwd)
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+
+fail=0
+check() {
+  if eval "$2"; then
+    echo "  ok   $1"
+  else
+    echo "  FAIL $1"
+    fail=1
+  fi
+}
+
+ZIP="$WORK/gapps.zip"
+GAPPS_CACHE="$WORK/cache" "$BIN" build -source "$FIXTURE" \
+  -packages gsa,photos,dialer-google -out "$ZIP" >/dev/null 2>&1
+
+# A fake ROM: system + product + system_ext, with a matching API level and an
+# AOSP dialer and search box for the removals to find.
+ROM="$WORK/rom"
+mkdir -p "$ROM/system/system/addon.d" "$ROM/product/app/QuickSearchBox" \
+         "$ROM/system_ext/priv-app/Dialer"
+cat > "$ROM/system/system/build.prop" <<'PROP'
+ro.build.version.sdk=36
+ro.product.brand=google
+PROP
+echo stale > "$ROM/product/app/QuickSearchBox/QuickSearchBox.apk"
+echo stale > "$ROM/system_ext/priv-app/Dialer/Dialer.apk"
+
+TMPDIR_I="$WORK/tmp"
+
+# The installer removes its own temp dir on the way out, so each run gets a
+# fresh copy of the installer payload.
+install_run() {
+  rm -rf "$TMPDIR_I"
+  mkdir -p "$TMPDIR_I"
+  unzip -q -o "$ZIP" 'installer/*' -d "$TMPDIR_I"
+  busybox ash "$HERE/harness.sh" "$TMPDIR_I" "$ZIP" "$ROM"
+}
+
+echo "== install =="
+if ! install_run > "$WORK/log" 2>&1; then
+  echo "installer failed:"; cat "$WORK/log"; exit 1
+fi
+sed 's/^/  | /' "$WORK/log"
+
+echo "== assertions =="
+check "gapps installed to /product"    '[ -s "$ROM/product/priv-app/Velvet/Velvet.apk" ]'
+check "gapps installed to /system_ext" '[ -s "$ROM/system_ext/priv-app/GoogleDialer/GoogleDialer.apk" ]'
+check "permissions xml installed"      '[ -s "$ROM/product/etc/permissions/privapp-permissions-google-p.xml" ]'
+check "payload size matches source"    '[ "$(stat -c%s "$ROM/product/priv-app/Velvet/Velvet.apk")" = "$(stat -c%s "$FIXTURE/assets/gsa.apk")" ]'
+check "payload bytes match source"     'cmp -s "$ROM/product/priv-app/Velvet/Velvet.apk" "$FIXTURE/assets/gsa.apk"'
+check "superseded QuickSearchBox gone" '[ ! -e "$ROM/product/app/QuickSearchBox" ]'
+check "superseded AOSP Dialer gone"    '[ ! -e "$ROM/system_ext/priv-app/Dialer" ]'
+check "build.prop got gms version"     'grep -q "^ro.com.google.gmsversion=16_202509$" "$ROM/system/system/build.prop"'
+check "build.prop kept existing props" 'grep -q "^ro.product.brand=google$" "$ROM/system/system/build.prop"'
+check "addon.d script installed"       '[ -x "$ROM/system/system/addon.d/69-306gapps.sh" ]'
+check "install record written"         '[ -s "$ROM/system/system/etc/306gapps/files.list" ]'
+check "no scratch file left behind"    '[ -z "$(find "$ROM" -name ".306gapps.part")" ]'
+check "apk mode is 0644"               '[ "$(stat -c%a "$ROM/product/priv-app/Velvet/Velvet.apk")" = "644" ]'
+
+echo "== rejects a mismatched ROM =="
+sed -i 's/ro.build.version.sdk=36/ro.build.version.sdk=34/' "$ROM/system/system/build.prop"
+if install_run >"$WORK/log2" 2>&1; then
+  echo "  FAIL installer accepted an API 34 ROM"; fail=1
+else
+  grep -q "API 36 but this ROM is API 34" "$WORK/log2" \
+    && echo "  ok   refuses to install on the wrong Android version" \
+    || { echo "  FAIL wrong error:"; cat "$WORK/log2"; fail=1; }
+fi
+
+echo "== refuses when the partition is full =="
+sed -i 's/ro.build.version.sdk=34/ro.build.version.sdk=36/' "$ROM/system/system/build.prop"
+if FAKE_FREE=1024 install_run >"$WORK/log3" 2>&1; then
+  echo "  FAIL installer ignored a full partition"; fail=1
+else
+  grep -q "not enough space" "$WORK/log3" \
+    && echo "  ok   aborts before writing when space is short" \
+    || { echo "  FAIL wrong error:"; cat "$WORK/log3"; fail=1; }
+fi
+
+exit $fail

@@ -1,0 +1,27 @@
+#!/sbin/sh
+# 306gapps recovery entry point. Recovery invokes this as:
+#   update-binary <api> <outfd> <zipfile>
+OUTFD=$2
+ZIPFILE=$3
+TMP=/tmp/306gapps
+
+ui_print() {
+  echo "ui_print $1" >> /proc/self/fd/"$OUTFD"
+  echo "ui_print" >> /proc/self/fd/"$OUTFD"
+}
+
+abort() {
+  ui_print "! $1"
+  exit 1
+}
+
+rm -rf "$TMP"
+mkdir -p "$TMP" || abort "cannot create $TMP"
+
+# Only the installer payload is unpacked up front; file payloads are streamed
+# out of the zip one at a time so we never need room for two copies.
+unzip -o "$ZIPFILE" 'installer/*' -d "$TMP" >/dev/null 2>&1 || abort "failed to unpack installer"
+chmod -R 0755 "$TMP/installer"
+
+export OUTFD ZIPFILE TMP
+. "$TMP/installer/installer.sh"
