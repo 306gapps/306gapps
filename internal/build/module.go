@@ -36,17 +36,19 @@ func buildModule(plan *stage.Plan, w *writer, opt Options) error {
 
 	entries := sortedEntries(plan)
 	for i, e := range entries {
-		if e.IsSymlink() {
+		switch {
+		case e.IsSymlink():
 			if err := w.addSymlink(modulePath(e.Path), e.Target); err != nil {
 				return err
 			}
-			if opt.Progress != nil {
-				opt.Progress(i+1, len(entries))
+		case e.IsEmpty():
+			if err := w.addBytes(modulePath(e.Path), e.Mode, nil); err != nil {
+				return err
 			}
-			continue
-		}
-		if err := w.addFile(modulePath(e.Path), e.Local, e.Mode); err != nil {
-			return err
+		default:
+			if err := w.addFile(modulePath(e.Path), e.Local, e.Mode); err != nil {
+				return err
+			}
 		}
 		if opt.Progress != nil {
 			opt.Progress(i+1, len(entries))

@@ -30,6 +30,9 @@ type Entry struct {
 // IsSymlink reports whether this entry is a link rather than a payload.
 func (e Entry) IsSymlink() bool { return e.Kind == manifest.KindSymlink }
 
+// IsEmpty reports a zero-length file, which has no payload to fetch.
+func (e Entry) IsEmpty() bool { return !e.IsSymlink() && e.Size == 0 }
+
 // Plan is everything a builder needs to emit a package.
 type Plan struct {
 	Release  manifest.Release
@@ -104,10 +107,10 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 			defer wg.Done()
 			for i := range jobs {
 				f := res.Files[i]
-				if f.IsSymlink() {
+				if f.IsSymlink() || f.IsEmpty() {
 					entries[i] = Entry{
 						Path: f.Path, Mode: f.FileMode(), Context: f.Context,
-						Kind: f.Kind, Target: f.Target,
+						Kind: f.Kind, Target: f.Target, Size: f.Size,
 					}
 					continue
 				}

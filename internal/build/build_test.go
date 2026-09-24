@@ -364,3 +364,68 @@ func TestBusyboxIsOptional(t *testing.T) {
 		}
 	}
 }
+
+// emptyPlan includes a zero-length file. Dumps contain these (ART profile
+// placeholders); they have no asset because a release host rejects a
+// zero-length upload.
+func emptyPlan(t *testing.T) *stage.Plan {
+	t.Helper()
+	p := testPlan(t)
+	p.Entries = append(p.Entries, stage.Entry{
+		Path: "product/priv-app/GmsCore/GmsCore.apk.prof",
+		Mode: 0o644, Kind: manifest.KindEtc, Size: 0,
+	})
+	return p
+}
+
+func TestEmptyFilesAreCarriedWithoutAnAsset(t *testing.T) {
+	for _, target := range []Target{TargetRecovery, TargetModule} {
+		out := filepath.Join(t.TempDir(), "o.zip")
+		if _, err := Build(emptyPlan(t), Options{Target: target, Out: out}); err != nil {
+			t.Fatalf("%s: %v", target, err)
+		}
+		zr, err := zip.OpenReader(out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := "files/product/priv-app/GmsCore/GmsCore.apk.prof"
+		if target == TargetModule {
+			want = "system/product/priv-app/GmsCore/GmsCore.apk.prof"
+		}
+		var found bool
+		for _, f := range zr.File {
+			if f.Name == want {
+				found = true
+				if f.UncompressedSize64 != 0 {
+					t.Errorf("%s: %s should be empty, got %d bytes",
+						target, want, f.UncompressedSize64)
+				}
+			}
+		}
+		zr.Close()
+		if !found {
+			t.Errorf("%s: %s missing", target, want)
+		}
+	}
+}
+
+func TestEmptyFilesGetNoDigestLine(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "o.zip")
+	if _, err := Build(emptyPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, _ := zip.OpenReader(out)
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.Name != "installer/digests.txt" {
+			continue
+		}
+		rc, _ := f.Open()
+		b := make([]byte, f.UncompressedSize64)
+		rc.Read(b)
+		rc.Close()
+		if strings.Contains(string(b), ".prof") {
+			t.Errorf("an empty file has no digest to record:\n%s", b)
+		}
+	}
+}

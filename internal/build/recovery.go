@@ -53,9 +53,15 @@ func buildRecovery(plan *stage.Plan, w *writer, opt Options) error {
 	}
 
 	for i, e := range entries {
-		// Symlinks are created by the installer from files.list; there is
-		// nothing to carry in the archive.
-		if !e.IsSymlink() {
+		switch {
+		case e.IsSymlink():
+			// Created by the installer from files.list; nothing to carry.
+		case e.IsEmpty():
+			// No payload was published, so carry the empty file itself.
+			if err := w.addBytes("files/"+e.Path, e.Mode, nil); err != nil {
+				return err
+			}
+		default:
 			if err := w.addFile("files/"+e.Path, e.Local, e.Mode); err != nil {
 				return err
 			}

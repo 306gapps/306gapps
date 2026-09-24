@@ -89,6 +89,8 @@ check "apk mode is 0644"               '[ "$(stat -c%a "$ROM/product/priv-app/Ve
 check "symlink created, not copied"    '[ -L "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so" ]'
 check "symlink points at its target"   '[ "$(readlink "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so")" = "/product/lib64/libjni.so" ]'
 check "digests shipped for payloads"   'unzip -p "$ZIP" installer/digests.txt | grep -q "product/priv-app/Velvet/Velvet.apk  "'
+check "empty file created, size 0"     '[ -f "$ROM/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk.prof" ] && [ ! -s "$ROM/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk.prof" ]'
+check "no digest line for empty file"  '! unzip -p "$ZIP" installer/digests.txt | grep -q "\.prof"'
 check "no digest line for the symlink" '! unzip -p "$ZIP" installer/digests.txt | grep -q libjni'
 check "corrupt payload is refused"     'corrupt_payload_is_refused'
 

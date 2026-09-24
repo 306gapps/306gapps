@@ -51,6 +51,13 @@ EXTRA_FILES = [
     ("gmscore", "product/etc/sysconfig/google.xml", "gms-sysconfig.xml", 3, "sysconfig"),
 ]
 
+# Zero-length files carry no payload either: there is nothing to store, and a
+# release host rejects a zero-length upload. Real dumps ship these as ART
+# profile placeholders.
+EMPTY = [
+    ("gmscore", "product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk.prof"),
+]
+
 # Links carry a target and no payload. Real dumps contain these where an app's
 # native libraries are shared from elsewhere on the partition.
 SYMLINKS = [
@@ -85,6 +92,10 @@ def main(root: str) -> int:
     by_id = {p["id"]: p for p in packages}
     for pid, path, asset, kib, kind in EXTRA_FILES:
         by_id[pid]["files"].append(entry(path, asset, kib, kind))
+    for pid, path in EMPTY:
+        by_id[pid]["files"].append({
+            "path": path, "size": 0, "mode": "0644", "kind": "etc",
+        })
     for pid, path, target in SYMLINKS:
         by_id[pid]["files"].append({
             "path": path, "size": 0, "mode": "0777",

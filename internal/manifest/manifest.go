@@ -111,6 +111,9 @@ type File struct {
 // IsSymlink reports whether this entry is a link rather than a payload.
 func (f File) IsSymlink() bool { return f.Kind == KindSymlink }
 
+// IsEmpty reports a zero-length file, which carries no asset.
+func (f File) IsEmpty() bool { return !f.IsSymlink() && f.Size == 0 }
+
 // Partition returns the partition a file installs to.
 func (f File) Partition() string {
 	p, _, _ := strings.Cut(f.Path, "/")
@@ -241,6 +244,10 @@ func (m *Manifest) Validate() error {
 					// An absolute target outside our partitions is a dump error.
 					add("%s: symlink %q points at %q, which is outside the "+
 						"partitions this package installs to", where, f.Path, f.Target)
+				}
+			} else if f.IsEmpty() {
+				if f.Asset != "" || f.SHA256 != "" {
+					add("%s: empty file %q must not carry a payload", where, f.Path)
 				}
 			} else {
 				if len(f.SHA256) != 64 {

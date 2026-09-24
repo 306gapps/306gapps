@@ -167,3 +167,31 @@ func TestArchitectureDefaultsToArm64(t *testing.T) {
 		t.Error("explicit arch ignored")
 	}
 }
+
+func TestValidateAcceptsAnEmptyFileWithoutAnAsset(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/priv-app/GmsCore/GmsCore.apk.prof", Mode: "0644",
+		Kind: KindEtc, Size: 0,
+	})
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRejectsAnEmptyFileCarryingAnAsset(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/Foo.prof", Mode: "0644", Kind: KindEtc,
+		Size: 0, Asset: "foo.prof", SHA256: digest,
+	})
+	wantErr(t, m, "must not carry a payload")
+}
+
+func TestValidateStillRequiresAnAssetForRealFiles(t *testing.T) {
+	m := base()
+	m.Packages[0].Files = append(m.Packages[0].Files, File{
+		Path: "product/app/Foo/Foo.apk", Mode: "0644", Kind: KindAPK, Size: 10,
+	})
+	wantErr(t, m, "has no asset")
+}

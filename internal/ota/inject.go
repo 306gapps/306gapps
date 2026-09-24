@@ -192,6 +192,12 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 			if _, err := io.WriteString(w, e.Target); err != nil {
 				return nil, fmt.Errorf("write symlink %s: %w", name, err)
 			}
+		} else if e.IsEmpty() {
+			hdr := &zip.FileHeader{Name: name, Method: zip.Store, Modified: epoch}
+			hdr.SetMode(e.Mode)
+			if _, err := zw.CreateHeader(hdr); err != nil {
+				return nil, err
+			}
 		} else {
 			src, err := os.Open(e.Local)
 			if err != nil {
