@@ -2,7 +2,11 @@ package stage
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"fmt"
+	"io"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -63,7 +67,7 @@ func (p *Plan) Verify(workers int) error {
 		}()
 	}
 	for _, e := range p.Entries {
-		if e.IsSymlink() || e.IsEmpty() || !containerExts[strings.ToLower(path.Ext(e.Path))] {
+		if e.IsSymlink() || e.IsEmpty() || !checkable(e.Path) {
 			continue
 		}
 		jobs <- e
@@ -77,12 +81,55 @@ func (p *Plan) Verify(workers int) error {
 	return nil
 }
 
+// checkable reports whether a path names an archive worth opening, including the
+// gzipped apks Android inflates on first boot -- Chrome and the WebView ship that way.
+func checkable(p string) bool {
+	low := strings.ToLower(p)
+	if strings.HasSuffix(low, ".gz") {
+		return containerExts[path.Ext(strings.TrimSuffix(low, ".gz"))]
+	}
+	return containerExts[path.Ext(low)]
+}
+
 func checkContainer(e Entry) string {
+	if strings.HasSuffix(strings.ToLower(e.Path), ".gz") {
+		return checkGzippedContainer(e.Local)
+	}
 	zr, err := zip.OpenReader(e.Local)
 	if err != nil {
 		return err.Error()
 	}
 	defer zr.Close()
+	if len(zr.File) == 0 {
+		return "archive is empty"
+	}
+	return ""
+}
+
+// Bounds how far one payload may inflate, so a malformed member cannot exhaust memory.
+const maxInflate = 1 << 30
+
+func checkGzippedContainer(local string) string {
+	f, err := os.Open(local)
+	if err != nil {
+		return err.Error()
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Sprintf("not readable as gzip (%v)", err)
+	}
+	defer gz.Close()
+
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, io.LimitReader(gz, maxInflate)); err != nil {
+		return fmt.Sprintf("cannot inflate (%v)", err)
+	}
+	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
+	if err != nil {
+		return fmt.Sprintf("gzip holds no readable archive (%v)", err)
+	}
 	if len(zr.File) == 0 {
 		return "archive is empty"
 	}

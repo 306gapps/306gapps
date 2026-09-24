@@ -2,6 +2,8 @@ package stage
 
 import (
 	"archive/zip"
+	"bytes"
+	"compress/gzip"
 	"errors"
 	"os"
 	"path/filepath"
@@ -94,5 +96,70 @@ func TestVerifyReportsEveryBadPayload(t *testing.T) {
 	var ce *CorruptError
 	if !errors.As(p.Verify(2), &ce) || len(ce.Found) != 2 {
 		t.Fatalf("want both reported, got %+v", ce)
+	}
+}
+
+func gzipped(t *testing.T, dir, name string, mangle func([]byte) []byte) string {
+	t.Helper()
+	var raw bytes.Buffer
+	zw := zip.NewWriter(&raw)
+	w, _ := zw.Create("AndroidManifest.xml")
+	w.Write(bytes.Repeat([]byte("x"), 4096))
+	zw.Close()
+
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	gw.Write(raw.Bytes())
+	gw.Close()
+
+	b := gz.Bytes()
+	if mangle != nil {
+		b = mangle(b)
+	}
+	p := filepath.Join(dir, name)
+	if err := os.WriteFile(p, b, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// Chrome, the WebView and the Trichrome library ship gzipped, and are among
+// the largest payloads in a release.
+func TestVerifyOpensGzippedArchives(t *testing.T) {
+	dir := t.TempDir()
+	p := &Plan{Entries: []Entry{
+		{Path: "product/app/Chrome/Chrome.apk.gz",
+			Local: gzipped(t, dir, "ok.apk.gz", nil), Size: 10},
+	}}
+	if err := p.Verify(2); err != nil {
+		t.Fatalf("a valid .apk.gz should pass: %v", err)
+	}
+}
+
+func TestVerifyCatchesATruncatedGzippedArchive(t *testing.T) {
+	dir := t.TempDir()
+	p := &Plan{Entries: []Entry{
+		{Path: "product/app/WebViewGoogle/WebViewGoogle.apk.gz",
+			Local: gzipped(t, dir, "cut.apk.gz", func(b []byte) []byte { return b[:len(b)-40] }),
+			Size:  10},
+	}}
+	var ce *CorruptError
+	if !errors.As(p.Verify(2), &ce) || len(ce.Found) != 1 {
+		t.Fatal("a truncated .apk.gz must be caught")
+	}
+}
+
+func TestVerifyIgnoresGzipThatIsNotAnArchive(t *testing.T) {
+	dir := t.TempDir()
+	plain := filepath.Join(dir, "notes.txt.gz")
+	var gz bytes.Buffer
+	gw := gzip.NewWriter(&gz)
+	gw.Write([]byte("just text"))
+	gw.Close()
+	os.WriteFile(plain, gz.Bytes(), 0o644)
+
+	p := &Plan{Entries: []Entry{{Path: "product/etc/notes.txt.gz", Local: plain, Size: 9}}}
+	if err := p.Verify(2); err != nil {
+		t.Fatalf("a .txt.gz is not an archive: %v", err)
 	}
 }
