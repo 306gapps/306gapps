@@ -167,7 +167,7 @@ func newWriter(w io.Writer) *writer {
 var storeExts = map[string]bool{
 	".apk": true, ".jar": true, ".so": true, ".odex": true,
 	".vdex": true, ".oat": true, ".png": true, ".webp": true,
-	".dex": true, ".capex": true,
+	".dex": true, ".capex": true, ".apex": true,
 }
 
 func (w *writer) header(name string, mode os.FileMode) *zip.FileHeader {

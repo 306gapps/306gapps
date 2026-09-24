@@ -34,6 +34,7 @@ ui_print " "
 
 # ---- verify the ROM matches ------------------------------------------------
 
+unlock_blocks
 mount_part "$PREFIX/system" || mount_part "$PREFIX/system_root" || abort "cannot mount /system"
 BUILDPROP=""
 for p in "$PREFIX/system/system/build.prop" "$PREFIX/system/build.prop"; do

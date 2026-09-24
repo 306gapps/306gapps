@@ -181,6 +181,21 @@ func TestBuildRejectsEmptyPlan(t *testing.T) {
 	}
 }
 
+// Already-compressed payloads must be stored. A 148 MiB GMS Core apex was
+// being re-deflated for no gain because .apex was missing from the list.
+func TestCompressedPayloadKindsAreStored(t *testing.T) {
+	for _, ext := range []string{".apk", ".jar", ".so", ".apex", ".capex", ".dex"} {
+		if !storeExts[ext] {
+			t.Errorf("%s should be stored, not deflated", ext)
+		}
+	}
+	for _, ext := range []string{".xml", ".sh", ".txt", ".prop", ".prof"} {
+		if storeExts[ext] {
+			t.Errorf("%s is compressible and should be deflated", ext)
+		}
+	}
+}
+
 func TestAPKsAreStoredNotDeflated(t *testing.T) {
 	out, _ := buildTo(t, TargetRecovery)
 	zr, err := zip.OpenReader(out)
