@@ -62,8 +62,9 @@ func (r ReleaseRef) String() string {
 	return fmt.Sprintf("%s (Android %s, %s %s)", r.ID, r.Android.Version, r.Device, r.Build)
 }
 
-// Latest returns the newest release for an API level, or the newest overall
-// when api is zero.
+// Latest returns the newest build for an API level, or for the newest Android version when api is zero.
+// Android version decides first: re-dumping an old version gives it a fresh
+// timestamp, so date alone would rank it above a newer Android.
 func (i *Index) Latest(api int) (ReleaseRef, bool) {
 	var best ReleaseRef
 	var found bool
@@ -71,7 +72,10 @@ func (i *Index) Latest(api int) (ReleaseRef, bool) {
 		if api != 0 && r.Android.API != api {
 			continue
 		}
-		if !found || r.Created.After(best.Created) {
+		switch {
+		case !found,
+			r.Android.API > best.Android.API,
+			r.Android.API == best.Android.API && r.Created.After(best.Created):
 			best, found = r, true
 		}
 	}
