@@ -137,8 +137,14 @@ test/ota            drives the ota target against a synthetic target-files packa
 
 - **Nothing unverified is installed.** Every payload is checked against the
   sha256 in the manifest before it enters the cache, and a corrupt download
-  leaves no cache entry behind. The recovery installer re-checks each file's size
-  as it extracts.
+  leaves no cache entry behind. The recovery installer re-checks each payload by
+  digest on the device.
+- **Archives are opened, not just hashed.** A digest only proves the bytes are
+  the ones the source recorded. If the source recorded a truncated file -- which
+  is what an older erofs-utils silently produces -- every checksum in the chain
+  agrees and the package installs a broken app. Every apk, apex and jar is opened
+  before it is packed, and a build that finds one unreadable fails rather than
+  shipping it.
 - **Dependencies and conflicts are resolved before anything is downloaded**, so a
   bad selection fails in milliseconds rather than after a gigabyte.
 - **Builds are reproducible.** The same selection produces a byte-identical zip:

@@ -325,6 +325,10 @@ func (m *Model) runBuild() tea.Msg {
 		return errMsg{err}
 	}
 
+	if err := plan.Verify(4); err != nil {
+		return errMsg{err}
+	}
+
 	m.phase.Store("packing")
 	m.toWrite.Store(int64(len(plan.Entries)))
 

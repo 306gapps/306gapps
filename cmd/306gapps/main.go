@@ -282,6 +282,11 @@ func cmdBuild(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Digests only prove the bytes match what was published; opening the archives
+	// catches a source that published corrupt bytes.
+	if err := plan.Verify(*workers); err != nil {
+		return err
+	}
 	fmt.Fprintln(os.Stderr, "\r\033[Kall payloads verified")
 
 	// Recovery environments vary wildly; a bundled busybox makes one known toolset.
