@@ -695,3 +695,32 @@ func TestSavedSelectionAppearsAndApplies(t *testing.T) {
 		t.Error("an edit should stop claiming to be the saved selection")
 	}
 }
+
+// Expert mode can name the zip. The example from the field is
+// 306gapps-A17-ionut-full-pixels-recovery.zip.
+func TestExpertFileNameOverride(t *testing.T) {
+	u := loaded(t)
+	def := u.zipName("a17-cd1a.260905.001.b1", build.TargetRecovery)
+	if def != "306gapps-a17-cd1a.260905.001.b1-recovery.zip" {
+		t.Errorf("default name changed: %q", def)
+	}
+
+	cases := map[string]string{
+		"306gapps-A17-ionut-full-pixels-recovery.zip": "306gapps-A17-ionut-full-pixels-recovery.zip",
+		"306gapps-A17-ionut-full-pixels-recovery":     "306gapps-A17-ionut-full-pixels-recovery.zip",
+		"  spaced  ": "spaced.zip",
+		"":           def,
+		"   ":        def,
+		// A name is a file, not a path: anything else could write outside the
+		// chosen folder.
+		"../../etc/passwd":  "passwd.zip",
+		"/tmp/evil.zip":     "evil.zip",
+		"sub/dir/thing.zip": "thing.zip",
+	}
+	for in, want := range cases {
+		u.state.outName = in
+		if got := u.zipName("a17-cd1a.260905.001.b1", build.TargetRecovery); got != want {
+			t.Errorf("zipName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

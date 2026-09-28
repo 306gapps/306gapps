@@ -6,7 +6,9 @@ package gui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/306gapps/306gapps/internal/build"
@@ -36,6 +38,8 @@ type state struct {
 	expert bool
 	// keepStock names packages whose removals are skipped.
 	keepStock map[string]bool
+	// outName overrides the generated zip name.
+	outName string
 	// configs holds the user's own saved selections.
 	configs *config.Store
 	// keptLabel is the saved selection currently showing, if any.
@@ -211,6 +215,17 @@ func (s *state) keepStockIDs() []string {
 
 // replaces reports whether a package removes anything, the only case where keep-stock means something.
 func replaces(p manifest.Package) bool { return len(p.Removes) > 0 }
+
+// zipName is the file the build writes, honouring an expert override.
+func (s *state) zipName(releaseID string, target build.Target) string {
+	if n := strings.TrimSpace(s.outName); n != "" {
+		if !strings.HasSuffix(strings.ToLower(n), ".zip") {
+			n += ".zip"
+		}
+		return filepath.Base(n)
+	}
+	return fmt.Sprintf("306gapps-%s-%s.zip", releaseID, target)
+}
 
 func (s *state) groups() []manifest.Group {
 	if s.cat == nil {

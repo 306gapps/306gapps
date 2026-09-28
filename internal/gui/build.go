@@ -4,7 +4,9 @@ package gui
 
 import (
 	"fmt"
+	"fyne.io/fyne/v2/container"
 	"path/filepath"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/dialog"
@@ -44,9 +46,9 @@ func (u *window) onBuild() {
 				return
 			}
 			// Chained, not concurrent: two dialogs at once stack on each other.
-			done := dialog.NewInformation("Done", fmt.Sprintf(
-				"%s\n\n%s · %d entries\nsha256 %s",
-				result.Path, humanSize(result.Size), result.Files, result.SHA256), u.win)
+			done := dialog.NewCustom("Done", "OK",
+				doneContent(result), u.win)
+			done.Resize(fyne.NewSize(620, 260))
 			done.SetOnClosed(func() {
 				if u.state.keptLabel == "" {
 					u.askToSave()
@@ -102,8 +104,7 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 	if err := writableDir(u.outDir); err != nil {
 		return nil, err
 	}
-	out := filepath.Join(u.outDir, fmt.Sprintf("306gapps-%s-%s.zip",
-		plan.Release.ID, u.state.target))
+	out := filepath.Join(u.outDir, u.zipName(plan.Release.ID, u.state.target))
 
 	opts := build.Options{
 		Target:  u.state.target,
@@ -155,4 +156,33 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 
 	report("Done", 1)
 	return restat(result)
+}
+
+// doneContent lays the result out in labelled rows.
+//
+// A plain information dialog sizes itself to its text and then breaks long
+// lines mid-word, which turned a Windows path into "...recovery.z" / "ip".
+func doneContent(r *build.Result) fyne.CanvasObject {
+	dir, file := filepath.Split(r.Path)
+
+	name := widget.NewLabel(file)
+	name.TextStyle = fyne.TextStyle{Bold: true}
+	name.Wrapping = fyne.TextWrapBreak
+
+	folder := widget.NewLabel(strings.TrimRight(dir, `/\`))
+	folder.Wrapping = fyne.TextWrapBreak
+	folder.Importance = widget.LowImportance
+
+	sum := widget.NewLabel(r.SHA256)
+	sum.Wrapping = fyne.TextWrapBreak
+	sum.Importance = widget.LowImportance
+
+	return container.NewVBox(
+		name,
+		folder,
+		widget.NewSeparator(),
+		widget.NewLabel(fmt.Sprintf("%s · %d entries", humanSize(r.Size), r.Files)),
+		widget.NewLabel("sha256"),
+		sum,
+	)
 }

@@ -11,6 +11,7 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -53,6 +54,7 @@ type window struct {
 	target     *widget.Select
 	ota        *otaForm
 	expertBox  *widget.Check
+	nameEntry  *widget.Entry
 	expertBar  *fyne.Container
 	importBtn  *widget.Button
 	exportBtn  *widget.Button
@@ -165,8 +167,18 @@ func (u *window) build() fyne.CanvasObject {
 	u.importBtn = widget.NewButton("Import…", u.onImport)
 	u.exportBtn = widget.NewButton("Export…", u.onExport)
 
-	u.expertBar = container.NewHBox(
-		widget.NewLabel("Saved selections:"), u.importBtn, u.exportBtn)
+	u.nameEntry = widget.NewEntry()
+	u.nameEntry.SetPlaceHolder("306gapps-<release>-<format>.zip")
+	u.nameEntry.OnChanged = func(v string) {
+		u.state.outName = v
+		u.refreshSummary()
+	}
+
+	u.expertBar = container.NewVBox(
+		container.NewBorder(nil, nil, widget.NewLabel("File name"), nil, u.nameEntry),
+		container.NewBorder(nil, nil, widget.NewLabel("Saved selections"),
+			container.NewHBox(u.importBtn, u.exportBtn), layout.NewSpacer()),
+	)
 	u.expertBar.Hide()
 
 	u.list = container.NewVBox()
