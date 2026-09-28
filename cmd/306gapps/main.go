@@ -118,9 +118,10 @@ func resolveRelease(idx *source.Index, spec string) (source.ReleaseRef, error) {
 			return r, nil
 		}
 	}
-	// Accept a bare Android version, e.g. "16".
+	// Accept a bare Android version, with or without the "a" every release id carries.
+	version := strings.TrimPrefix(strings.ToLower(spec), "a")
 	for _, r := range idx.Releases {
-		if r.Android.Version == spec {
+		if r.Android.Version == version {
 			if ref, ok := idx.Latest(r.Android.API); ok {
 				return ref, nil
 			}
