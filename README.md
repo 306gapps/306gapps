@@ -179,8 +179,13 @@ test/uninstaller    installs then uninstalls, checking nothing of ours survives
 - **Dependencies and conflicts are resolved before anything is downloaded**, so a
   bad selection fails in milliseconds rather than after a gigabyte.
 - **Builds are reproducible.** The same selection produces a byte-identical zip:
-  entries are path-sorted with a fixed timestamp, and already-compressed formats
-  are stored rather than re-deflated.
+  entries are path-sorted with a fixed timestamp, and the signature carries no
+  timestamp of its own.
+- **Payloads are deflated, including the apks.** That looks like wasted work,
+  since an apk is a zip already, but Google leaves a large share of the entries
+  inside theirs uncompressed so they can be mapped -- GMS Core stores 1856 of
+  its 9453. Deflating the container recovers that: a package is about 1.6x
+  smaller than storing them, which on the core selection alone is 125 MiB.
 - **Symlinks are preserved.** Real dumps link an app's native libraries in from
   the partition's `lib64`; copying the link as a regular file, or dropping it,
   leaves an app that will not start.

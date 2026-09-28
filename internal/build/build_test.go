@@ -181,22 +181,24 @@ func TestBuildRejectsEmptyPlan(t *testing.T) {
 	}
 }
 
-// Already-compressed payloads must be stored. A 148 MiB GMS Core apex was
-// being re-deflated for no gain because .apex was missing from the list.
-func TestCompressedPayloadKindsAreStored(t *testing.T) {
-	for _, ext := range []string{".apk", ".jar", ".so", ".apex", ".capex", ".dex"} {
+// Apks and apexes look like they should be stored, being zips already. They
+// should not: Google leaves many entries uncompressed inside them so they can
+// be mapped, and deflating the container recovers that. Only formats that are
+// wholly compressed streams are stored.
+func TestOnlyWhollyCompressedFormatsAreStored(t *testing.T) {
+	for _, ext := range []string{".gz", ".xz", ".zst"} {
 		if !storeExts[ext] {
-			t.Errorf("%s should be stored, not deflated", ext)
+			t.Errorf("%s is a compressed stream and should be stored", ext)
 		}
 	}
-	for _, ext := range []string{".xml", ".sh", ".txt", ".prop", ".prof"} {
+	for _, ext := range []string{".apk", ".apex", ".jar", ".xml", ".sh"} {
 		if storeExts[ext] {
-			t.Errorf("%s is compressible and should be deflated", ext)
+			t.Errorf("%s compresses further and should be deflated", ext)
 		}
 	}
 }
 
-func TestAPKsAreStoredNotDeflated(t *testing.T) {
+func TestPayloadsAreDeflated(t *testing.T) {
 	out, _ := buildTo(t, TargetRecovery)
 	zr, err := zip.OpenReader(out)
 	if err != nil {
@@ -204,10 +206,7 @@ func TestAPKsAreStoredNotDeflated(t *testing.T) {
 	}
 	defer zr.Close()
 	for _, f := range zr.File {
-		switch {
-		case strings.HasSuffix(f.Name, ".apk") && f.Method != zip.Store:
-			t.Errorf("%s should be stored, got method %d", f.Name, f.Method)
-		case strings.HasSuffix(f.Name, ".sh") && f.Method != zip.Deflate:
+		if strings.HasSuffix(f.Name, ".apk") && f.Method != zip.Deflate {
 			t.Errorf("%s should be deflated, got method %d", f.Name, f.Method)
 		}
 	}

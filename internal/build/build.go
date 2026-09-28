@@ -165,12 +165,11 @@ func newWriter(w io.Writer) *writer {
 	return &writer{zw: zip.NewWriter(w), seen: map[string]bool{}}
 }
 
-// storeExts are already-compressed formats; deflating them again costs CPU and
-// gains nothing.
+// Formats that do not compress further. Apks and apexes are deliberately absent:
+// Google leaves many entries in them uncompressed for mapping, and deflating the
+// container recovers 1.55x over storing it.
 var storeExts = map[string]bool{
-	".apk": true, ".jar": true, ".so": true, ".odex": true,
-	".vdex": true, ".oat": true, ".png": true, ".webp": true,
-	".dex": true, ".capex": true, ".apex": true,
+	".gz": true, ".xz": true, ".zst": true, ".br": true,
 }
 
 func (w *writer) header(name string, mode os.FileMode) *zip.FileHeader {

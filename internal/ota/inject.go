@@ -357,8 +357,10 @@ func underAny(name string, prefixes []string) bool {
 	return false
 }
 
+// Only wholly compressed streams are stored; apks and apexes deflate further,
+// because Google leaves many of their entries uncompressed for mapping.
 var storedExts = map[string]bool{
-	".apk": true, ".jar": true, ".so": true, ".capex": true, ".apex": true,
+	".gz": true, ".xz": true, ".zst": true, ".br": true,
 }
 
 func isStored(name string) bool {
