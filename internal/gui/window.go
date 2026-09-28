@@ -50,6 +50,7 @@ type window struct {
 	warning    *widget.Label
 	target     *widget.Select
 	ota        *otaForm
+	outEntry   *widget.Entry
 	buildBtn   *widget.Button
 	status     *widget.Label
 
@@ -102,6 +103,15 @@ func (u *window) build() fyne.CanvasObject {
 	u.warning.Importance = widget.DangerImportance
 	u.status = widget.NewLabel("")
 
+	u.outEntry = pathEntry("")
+	setPath(u.outEntry, u.outDir)
+	browseOut := widget.NewButton("Browse…", func() {
+		u.pickFolder(func(path string) {
+			u.state.outDir = path
+			setPath(u.outEntry, path)
+		})
+	})
+
 	u.buildBtn = widget.NewButtonWithIcon("Build", theme.DownloadIcon(), u.onBuild)
 	u.buildBtn.Importance = widget.HighImportance
 	u.buildBtn.Disable()
@@ -142,6 +152,8 @@ func (u *window) build() fyne.CanvasObject {
 		widget.NewSeparator(),
 		u.warning,
 		u.summaryLbl,
+		container.NewBorder(nil, nil,
+			widget.NewLabel("Save to"), browseOut, u.outEntry),
 		container.NewBorder(nil, nil,
 			widget.NewLabel("Format"), u.buildBtn, u.target),
 		u.status,

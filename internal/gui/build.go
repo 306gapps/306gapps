@@ -91,6 +91,9 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 		}
 	}
 
+	if err := writableDir(u.outDir); err != nil {
+		return nil, err
+	}
 	out := filepath.Join(u.outDir, fmt.Sprintf("306gapps-%s-%s.zip",
 		plan.Release.ID, u.state.target))
 

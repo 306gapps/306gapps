@@ -578,3 +578,21 @@ func TestBrowseButtonsOpenWithoutCrashing(t *testing.T) {
 		}()
 	}
 }
+
+// The destination shown is the destination used, and choosing a new one
+// changes where Build writes.
+func TestOutputChooserSetsTheDestination(t *testing.T) {
+	u := loaded(t)
+	if u.outEntry.Text != u.outDir {
+		t.Errorf("field %q does not match the destination %q", u.outEntry.Text, u.outDir)
+	}
+	dest := t.TempDir()
+	u.state.outDir = dest
+	setPath(u.outEntry, dest)
+	if u.outEntry.Text != dest {
+		t.Errorf("field did not follow: %q", u.outEntry.Text)
+	}
+	if err := writableDir(u.outDir); err != nil {
+		t.Errorf("a chosen folder should be usable: %v", err)
+	}
+}

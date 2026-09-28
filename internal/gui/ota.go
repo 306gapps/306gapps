@@ -64,7 +64,7 @@ func (u *window) buildOTAForm() *otaForm {
 				return
 			}
 			defer r.Close()
-			u.state.otaBase = r.URI().Path()
+			u.state.otaBase = uriPath(r.URI())
 			u.refreshOTA()
 		}, u.win)
 		d.SetFilter(storage.NewExtensionFileFilter([]string{".zip"}))
@@ -129,7 +129,7 @@ func (u *window) pickFolder(set func(string)) {
 		if err != nil || list == nil {
 			return
 		}
-		set(list.Path())
+		set(uriPath(list))
 	}, u.win)
 	showSized(d)
 }
