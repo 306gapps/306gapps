@@ -211,7 +211,15 @@ func TestGroupBoxTakesTheWholeFamily(t *testing.T) {
 	}
 	g.check.OnChanged(true)
 	for _, p := range g.members {
-		if !u.selected[p.ID] && !p.Required {
+		if p.Required {
+			continue
+		}
+		// A member that conflicts with one already taken is left out on
+		// purpose; TestTakingAFamilyNeverTakesBothSidesOfAConflict covers it.
+		if u.conflictsWithAny(p.ID, u.selected) {
+			continue
+		}
+		if !u.selected[p.ID] {
 			t.Errorf("%s left out after taking the family", p.ID)
 		}
 	}
@@ -349,5 +357,47 @@ func TestFilteringKeepsTheSelection(t *testing.T) {
 	u.rebuildList()
 	if !u.rows["dialer-google"].check.Checked {
 		t.Error("the selection was lost across filtering")
+	}
+}
+
+// Two packages that cannot coexist are a choice. Taking one drops the other
+// instead of leaving the picker in an error state the user has to back out of.
+func TestTakingOneSideOfAConflictDropsTheOther(t *testing.T) {
+	u := loaded(t)
+	u.rows["dialer-google"].check.OnChanged(true)
+	u.rows["dialer-aosp"].check.OnChanged(true)
+	if u.selected["dialer-google"] {
+		t.Error("taking the AOSP dialer should have dropped the Google one")
+	}
+	if u.resErr != nil {
+		t.Errorf("picker should not be left in an error state: %v", u.resErr)
+	}
+	// And back the other way.
+	u.rows["dialer-google"].check.OnChanged(true)
+	if u.selected["dialer-aosp"] {
+		t.Error("taking the Google dialer should have dropped the AOSP one")
+	}
+	if u.resErr != nil {
+		t.Errorf("picker should not be left in an error state: %v", u.resErr)
+	}
+}
+
+// Taking a whole family must not take both sides of a conflict inside it.
+func TestTakingAFamilyNeverTakesBothSidesOfAConflict(t *testing.T) {
+	u := loaded(t)
+	g := u.groupRows["apps"]
+	if g == nil {
+		t.Fatal("no header for the apps family")
+	}
+	g.check.OnChanged(true)
+	if u.resErr != nil {
+		t.Fatalf("taking a family should resolve: %v", u.resErr)
+	}
+	if u.selected["dialer-aosp"] && u.selected["dialer-google"] {
+		t.Error("family took both sides of a conflict")
+	}
+	// Manifest order decides, so the ordinary package wins over the override.
+	if !u.selected["dialer-google"] {
+		t.Error("the first in manifest order should have won")
 	}
 }

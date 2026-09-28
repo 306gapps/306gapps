@@ -280,18 +280,41 @@ func (m *Model) toggle() {
 	if r.pkg == nil || r.pkg.Required {
 		return
 	}
-	m.selected[r.pkg.ID] = !m.selected[r.pkg.ID]
+	on := !m.selected[r.pkg.ID]
+	m.selected[r.pkg.ID] = on
+	// A conflict is a choice, not an error: taking one drops the other.
+	if on {
+		for _, other := range m.cat.ConflictsWith(r.pkg.ID) {
+			m.selected[other] = false
+		}
+	}
 	m.resolve()
 }
 
 func (m *Model) setGroup(on bool) {
 	cat := m.rows[m.cursor].group
+	taken := map[string]bool{}
 	for _, r := range m.rows {
-		if r.pkg != nil && r.group == cat && !r.pkg.Required {
-			m.selected[r.pkg.ID] = on
+		if r.pkg == nil || r.group != cat || r.pkg.Required {
+			continue
 		}
+		if on && m.conflictsWithAny(r.pkg.ID, taken) {
+			m.selected[r.pkg.ID] = false
+			continue
+		}
+		m.selected[r.pkg.ID] = on
+		taken[r.pkg.ID] = on
 	}
 	m.resolve()
+}
+
+func (m *Model) conflictsWithAny(id string, taken map[string]bool) bool {
+	for _, other := range m.cat.ConflictsWith(id) {
+		if taken[other] {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *Model) selection() []string {

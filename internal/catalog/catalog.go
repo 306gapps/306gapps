@@ -57,6 +57,30 @@ func (c *Catalog) Groups() []manifest.Group {
 	return out
 }
 
+// ConflictsWith returns every package that cannot coexist with id, from either side's declaration.
+func (c *Catalog) ConflictsWith(id string) []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(other string) {
+		if other != id && !seen[other] {
+			seen[other] = true
+			out = append(out, other)
+		}
+	}
+	for _, other := range c.idx[id].Conflicts {
+		add(other)
+	}
+	for _, p := range c.m.Packages {
+		for _, other := range p.Conflicts {
+			if other == id {
+				add(p.ID)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // Resolution is the outcome of resolving a selection.
 type Resolution struct {
 	// Packages is the full install set in dependency order.
@@ -135,14 +159,32 @@ func (c *Catalog) Resolve(sel []string) (*Resolution, error) {
 		}
 	}
 
+	// Order each pair before deduping, or a one-sided declaration is dropped
+	// whenever the declaring id sorts second and both get installed.
 	var pairs [][2]string
+	seenPair := map[[2]string]bool{}
 	for _, id := range sortedKeys(want) {
 		for _, other := range c.idx[id].Conflicts {
-			if want[other] && id < other {
-				pairs = append(pairs, [2]string{id, other})
+			if !want[other] {
+				continue
 			}
+			pair := [2]string{id, other}
+			if pair[0] > pair[1] {
+				pair[0], pair[1] = pair[1], pair[0]
+			}
+			if seenPair[pair] {
+				continue
+			}
+			seenPair[pair] = true
+			pairs = append(pairs, pair)
 		}
 	}
+	sort.Slice(pairs, func(i, j int) bool {
+		if pairs[i][0] != pairs[j][0] {
+			return pairs[i][0] < pairs[j][0]
+		}
+		return pairs[i][1] < pairs[j][1]
+	})
 	if len(pairs) > 0 {
 		return nil, &ConflictError{Pairs: pairs}
 	}

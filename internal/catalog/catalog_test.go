@@ -163,3 +163,34 @@ func TestDependents(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+// A conflict declared on only one side is still a conflict. The dedup used to
+// key on which id sorted first, so "verifier-block conflicts with verifier"
+// was dropped -- both got installed, two apks claiming one Android package.
+func TestConflictDeclaredByTheLaterIDIsCaught(t *testing.T) {
+	c := cat(pkg("verifier"), pkg("verifier-block", conflicts("verifier")))
+	if _, err := c.Resolve([]string{"verifier", "verifier-block"}); err == nil {
+		t.Fatal("selecting both sides of a conflict should fail")
+	}
+}
+
+// Reported both ways round, so the test does not pass by alphabetical luck.
+func TestConflictDeclaredByTheEarlierIDIsCaught(t *testing.T) {
+	c := cat(pkg("aaa", conflicts("zzz")), pkg("zzz"))
+	if _, err := c.Resolve([]string{"aaa", "zzz"}); err == nil {
+		t.Fatal("selecting both sides of a conflict should fail")
+	}
+}
+
+// Declared on both sides it is still one conflict, not two.
+func TestSymmetricConflictIsReportedOnce(t *testing.T) {
+	c := cat(pkg("aaa", conflicts("zzz")), pkg("zzz", conflicts("aaa")))
+	_, err := c.Resolve([]string{"aaa", "zzz"})
+	var ce *ConflictError
+	if !errors.As(err, &ce) {
+		t.Fatalf("want a ConflictError, got %v", err)
+	}
+	if len(ce.Pairs) != 1 {
+		t.Errorf("want one pair, got %v", ce.Pairs)
+	}
+}

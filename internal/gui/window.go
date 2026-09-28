@@ -277,14 +277,31 @@ func (u *window) groupHeader(g manifest.Group, members []manifest.Package) fyne.
 
 func (u *window) groupToggle(members []manifest.Package) func(bool) {
 	return func(on bool) {
+		taken := map[string]bool{}
 		for _, p := range members {
-			if !p.Required {
-				u.selected[p.ID] = on
+			if p.Required {
+				continue
 			}
+			// A family cannot take both sides of a conflict; first in manifest order wins.
+			if on && u.conflictsWithAny(p.ID, taken) {
+				u.selected[p.ID] = false
+				continue
+			}
+			u.selected[p.ID] = on
+			taken[p.ID] = on
 		}
 		u.resolve()
 		u.refreshSummary()
 	}
+}
+
+func (u *window) conflictsWithAny(id string, taken map[string]bool) bool {
+	for _, other := range u.cat.ConflictsWith(id) {
+		if taken[other] {
+			return true
+		}
+	}
+	return false
 }
 
 // allSelectedIn reports whether every selectable package in the family is in.
@@ -324,6 +341,12 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 			return
 		}
 		u.selected[p.ID] = on
+		// A conflict is a choice, not an error: taking one drops the other.
+		if on {
+			for _, other := range u.cat.ConflictsWith(p.ID) {
+				u.selected[other] = false
+			}
+		}
 		u.resolve()
 		u.refreshSummary()
 	}
