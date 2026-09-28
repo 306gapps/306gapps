@@ -73,6 +73,31 @@ Filesystem     1K-blocks    Used Available Use% Mounted on
 EOF
 check "coreutils output" "$(free_bytes /)" "510888771584"
 
+
+# Recovery's shell compares in 32 bits: 2541121536 wraps to -1753845760, so a
+# partition with 2.4 GiB free looked smaller than a 1.7 GiB payload and the
+# installer refused to write to it. Every size comparison goes through lt().
+echo "== lt, on sizes recovery's own [ cannot compare =="
+eval "$(sed -n '/^lt()/,/^}/p' "$UTIL")"
+eval "$(sed -n '/^sub_bytes()/,/^}/p' "$UTIL")"
+eval "$(sed -n '/^add_bytes()/,/^}/p' "$UTIL")"
+
+lt 2541121536 1832011106 && r=yes || r=no
+check "2.4 GiB is not less than 1.7 GiB" "$r" "no"
+lt 1832011106 2541121536 && r=yes || r=no
+check "1.7 GiB is less than 2.4 GiB" "$r" "yes"
+lt 3221225472 4294967296 && r=yes || r=no
+check "3 GiB is less than 4 GiB" "$r" "yes"
+lt 4294967296 3221225472 && r=yes || r=no
+check "4 GiB is not less than 3 GiB" "$r" "no"
+lt 100 200 && r=yes || r=no
+check "small numbers still work" "$r" "yes"
+lt 200 200 && r=yes || r=no
+check "equal is not less" "$r" "no"
+
+check "subtraction past 2 GiB" "$(sub_bytes 5000000000 1000000000)" "4000000000"
+check "addition past 2 GiB"    "$(add_bytes 3000000000 2000000000)" "5000000000"
+
 echo
 [ "$fail" = 0 ] && echo "all util assertions passed" || echo "FAILURES"
 exit $fail

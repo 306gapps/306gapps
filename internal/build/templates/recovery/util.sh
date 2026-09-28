@@ -16,6 +16,17 @@ abort() {
 log() { [ "$VERBOSE" = "1" ] && ui_print "  . $1"; return 0; }
 
 # human <bytes> -> "123.4 MB"
+# Compare and add sizes that may exceed 2 GiB.
+#
+# Recovery's shell does 32-bit signed arithmetic, in both [ and $(( )). A
+# partition with 2541121536 bytes free wraps to -1753845760, so
+# [ "$free" -lt "$need" ] answers "2.4 GB is less than 1.7 GB" and the
+# installer refuses to write to a partition with room to spare. awk works in
+# doubles and is exact well past any partition size.
+lt() { awk -v a="$1" -v b="$2" 'BEGIN{ exit !(a+0 < b+0) }'; }
+sub_bytes() { awk -v a="$1" -v b="$2" 'BEGIN{ printf "%.0f", a-b }'; }
+add_bytes() { awk -v a="$1" -v b="$2" 'BEGIN{ printf "%.0f", a+b }'; }
+
 human() {
   awk -v b="$1" 'BEGIN{
     split("B KB MB GB",u," "); i=1
@@ -157,24 +168,27 @@ free_bytes() {
 }
 
 # Grow a logical partition by <bytes> when the ROM left no slack.
+# Every variable here is prefixed. A shell function shares the caller's scope,
+# so the plain names this used to use -- need, target -- silently overwrote the
+# space check's own, and an abort then reported a negative size.
 grow_part() {
-  mnt=$1; need=$2
-  dev=$(block_for "$mnt")
-  case "$dev" in
+  _gp_mnt=$1; _gp_need=$2
+  _gp_dev=$(block_for "$_gp_mnt")
+  case "$_gp_dev" in
     /dev/block/dm-*) ;;
     *) return 1 ;;
   esac
   command -v resize2fs >/dev/null 2>&1 || return 1
-  name=$(basename "$mnt")
-  cur=$(blockdev --getsize64 "$dev" 2>/dev/null) || return 1
-  target=$((cur + need + 33554432))
+  _gp_name=$(basename "$_gp_mnt")
+  _gp_cur=$(blockdev --getsize64 "$_gp_dev" 2>/dev/null) || return 1
+  _gp_target=$(add_bytes "$_gp_cur" "$(add_bytes "$_gp_need" 33554432)")
   if command -v lptools >/dev/null 2>&1; then
-    lptools unmap "$name" >/dev/null 2>&1
-    lptools resize "$name" "$target" >/dev/null 2>&1 || return 1
-    lptools map "$name" >/dev/null 2>&1
-    dev=$(block_for "$mnt")
+    lptools unmap "$_gp_name" >/dev/null 2>&1
+    lptools resize "$_gp_name" "$_gp_target" >/dev/null 2>&1 || return 1
+    lptools map "$_gp_name" >/dev/null 2>&1
+    _gp_dev=$(block_for "$_gp_mnt")
   fi
-  resize2fs "$dev" >/dev/null 2>&1 || return 1
+  resize2fs "$_gp_dev" >/dev/null 2>&1 || return 1
   return 0
 }
 

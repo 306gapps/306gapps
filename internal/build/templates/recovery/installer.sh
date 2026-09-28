@@ -106,14 +106,16 @@ for part in $PARTS; do
   need=$(awk -F'\t' -v p="$part/" 'index($1,p)==1 {s+=$4} END {print s+0}' "$LIST")
   free=$(free_bytes "$target")
   ui_print "- /$part needs $(human "$need"), has $(human "$free") free"
-  if [ "$free" -lt "$need" ]; then
+  # lt, not [ -lt: sizes here routinely exceed what recovery's shell can
+  # compare. See util.sh.
+  if lt "$free" "$need"; then
     ui_print "  trying to grow /$part..."
-    if grow_part "$PREFIX/$part" "$((need - free))"; then
+    if grow_part "$PREFIX/$part" "$(sub_bytes "$need" "$free")"; then
       free=$(free_bytes "$target")
       ui_print "  grew to $(human "$free") free"
     fi
   fi
-  [ "$free" -lt "$need" ] && abort "not enough space on /$part: need $(human "$need"), have $(human "$free")"
+  lt "$free" "$need" && abort "not enough space on /$part: need $(human "$need"), have $(human "$free")"
 done
 
 # ---- remove superseded AOSP packages ---------------------------------------
