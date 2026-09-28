@@ -89,7 +89,7 @@ jobs:
           # needs the Wayland headers even to compile for X11.
           sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
-      - run: go build -tags gui ./cmd/306gapps-gui
+      - run: go build -tags gui ./cmd/306gapps
       - run: go vet -tags gui ./internal/gui/
       - run: go test -tags gui ./internal/gui/
 

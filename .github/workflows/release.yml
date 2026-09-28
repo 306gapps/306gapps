@@ -36,50 +36,20 @@ jobs:
             echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
-  # The command line: one pure-Go binary per target, no toolchain needed.
-  cli:
+  # Targets whose desktop picker needs a GUI toolchain are built on a runner of
+  # that architecture: cgo cannot be cross-compiled without one. The rest are
+  # pure Go and build anywhere.
+  native:
     needs: version
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - { goos: linux,   goarch: amd64 }
-          - { goos: linux,   goarch: arm64 }
-          - { goos: windows, goarch: amd64, ext: ".exe" }
-          - { goos: windows, goarch: arm64, ext: ".exe" }
-          - { goos: darwin,  goarch: amd64 }
-          - { goos: darwin,  goarch: arm64 }
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-      - name: Build
-        env:
-          CGO_ENABLED: "0"
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          V: ${{ needs.version.outputs.version }}
-        run: |
-          mkdir -p dist
-          go build -trimpath \
-            -ldflags "-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V" \
-            -o "dist/306gapps-$V-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
-            ./cmd/306gapps
-      - uses: actions/upload-artifact@v4
-        with:
-          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: dist/
-
-  # The picker. cgo, so one runner per operating system.
-  gui:
-    needs: version
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-22.04,  goos: linux,   goarch: amd64 }
-          - { os: windows-latest, goos: windows, goarch: amd64, ext: ".exe" }
+          - { os: ubuntu-22.04,     goos: linux,   goarch: amd64 }
+          - { os: ubuntu-22.04-arm, goos: linux,   goarch: arm64 }
+          - { os: windows-latest,   goos: windows, goarch: amd64, ext: ".exe" }
+          - { os: windows-11-arm,   goos: windows, goarch: arm64, ext: ".exe" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -87,14 +57,12 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      # Built on the oldest supported runner so the binary does not require a
-      # newer glibc than the distributions people actually run.
+      # glfw compiles both an X11 and a Wayland backend, so the Wayland headers
+      # are needed even though the binary also runs under plain X11.
       - name: GUI toolkit build dependencies
         if: matrix.goos == 'linux'
         run: |
           sudo apt-get update -qq
-          # glfw compiles both backends, so the Wayland headers are needed
-          # even though the binary also runs under plain X11.
           sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
 
@@ -105,26 +73,49 @@ jobs:
           V: ${{ needs.version.outputs.version }}
         run: |
           mkdir -p dist
-          # -H=windowsgui keeps a console window from opening behind the app.
-          LD="-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V"
-          if [ "${{ matrix.goos }}" = "windows" ]; then LD="$LD -H=windowsgui"; fi
-          go build -trimpath -tags gui -ldflags "$LD" \
-            -o "dist/306gapps-gui-$V-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
-            ./cmd/306gapps-gui
-
-      - name: It runs
+          go build -trimpath -tags gui \
+            -ldflags "-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V" \
+            -o "dist/306gapps-$V-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
+            ./cmd/306gapps
+      - name: It is what it says
         shell: bash
-        run: |
-          ls -l dist/
-          file dist/* || true
-
+        run: ls -l dist/ && (file dist/* || true)
       - uses: actions/upload-artifact@v4
         with:
-          name: gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: bin-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  # macOS is command line only: no desktop picker is built for it, so these
+  # cross-compile as pure Go from anywhere.
+  darwin:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V" \
+            -o "dist/306gapps-$V-darwin-${{ matrix.goarch }}" ./cmd/306gapps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-darwin-${{ matrix.goarch }}
           path: dist/
 
   publish:
-    needs: [version, cli, gui]
+    needs: [version, native, darwin]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -167,8 +158,8 @@ jobs:
             --title "$V" \
             --notes "Binaries for Linux, Windows and macOS.
 
-          \`306gapps\` is the command line; \`306gapps-gui\` is the desktop picker.
-          The picker is only built for linux/amd64 and windows/amd64 — it needs
-          the platform's own GUI toolchain, which cannot be cross-compiled.
+          One binary per platform. Run it with no arguments for the desktop
+          picker, or \`306gapps pick\` for the terminal one. macOS builds are
+          command line only.
 
           Verify a download against \`SHA256SUMS\`."

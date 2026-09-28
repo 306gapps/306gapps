@@ -42,8 +42,25 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cmd := "pick"
 	args := os.Args[1:]
+
+	// Handled first, or the default subcommand swallows them.
+	if len(args) > 0 {
+		switch args[0] {
+		case "-h", "--help":
+			usage()
+			return nil
+		case "-v", "--version":
+			fmt.Println("306gapps " + version.String())
+			return nil
+		}
+	}
+
+	// With no subcommand, open whichever picker the machine can show.
+	cmd := "pick"
+	if hasGUI && haveDisplay() {
+		cmd = "gui"
+	}
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		cmd, args = args[0], args[1:]
 	}
@@ -51,6 +68,8 @@ func run() error {
 	switch cmd {
 	case "pick":
 		return cmdPick(ctx, args)
+	case "gui":
+		return cmdGUI(ctx, args)
 	case "list":
 		return cmdList(ctx, args)
 	case "build":
@@ -61,10 +80,10 @@ func run() error {
 		return cmdCache(args)
 	case "validate":
 		return cmdValidate(args)
-	case "version", "-v", "--version":
+	case "version":
 		fmt.Println("306gapps " + version.String())
 		return nil
-	case "help", "-h", "--help":
+	case "help":
 		usage()
 		return nil
 	default:
@@ -77,7 +96,10 @@ func usage() {
 	fmt.Fprint(os.Stderr, `306gapps - build custom Google apps packages for custom ROMs
 
 usage:
-  306gapps [pick]                  interactive picker (default)
+  306gapps                         desktop picker, or the terminal one
+                                   when there is no display
+  306gapps pick                    terminal picker
+  306gapps gui                     desktop picker
   306gapps list                    list available releases
   306gapps list <release>          list packages in a release
   306gapps build [flags]           build without the picker
@@ -152,6 +174,23 @@ func cmdPick(ctx context.Context, args []string) error {
 		return err
 	}
 	return tui.Run(ctx, newSource(*src, *cache), *out)
+}
+
+// cmdGUI opens the desktop picker, which takes the same flags as the terminal one.
+func cmdGUI(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("gui", flag.ContinueOnError)
+	src, cache := commonFlags(fs)
+	out := fs.String("out", ".", "directory to write the built package to")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(*out, 0o755); err != nil {
+		return err
+	}
+	return runGUI(ctx, newSource(*src, *cache), *out)
 }
 
 func cmdList(ctx context.Context, args []string) error {

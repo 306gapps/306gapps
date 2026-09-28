@@ -17,13 +17,15 @@ go install github.com/306gapps/306gapps/cmd/306gapps@latest
 
 ## Use
 
-There are two front ends over one core. The manifest, the dependency resolver,
-the payload cache, the builders and the signer are shared, so a package built
-either way is the same bytes.
+One binary, two front ends over one core. The manifest, the dependency
+resolver, the payload cache, the builders and the signer are shared, so a
+package built either way is the same bytes.
 
 ```
-306gapps-gui                   # desktop picker
-306gapps                       # terminal picker
+306gapps                       # desktop picker, or the terminal one
+                               # when there is no display
+306gapps gui                   # desktop picker
+306gapps pick                  # terminal picker
 306gapps list                  # available releases
 306gapps list 16               # packages in the newest Android 16 release
 306gapps build -target module -packages gsa,photos,gboard
@@ -198,17 +200,23 @@ test/uninstaller    installs then uninstalls, checking nothing of ours survives
 
 ## The `gui` build tag
 
-The desktop picker uses Fyne, which needs cgo and the system GL and X headers.
-The command line does not, and that is worth keeping: it cross-compiles to every
-platform from anywhere with `CGO_ENABLED=0` and ships as one static binary. So
-the picker sits behind a build tag, and a default `go build ./...` never reaches
-it.
+The desktop picker uses Fyne, which needs cgo and the system GL, X and Wayland
+headers. The rest of the tool does not, and that is worth keeping: without the
+tag it cross-compiles to every platform from anywhere with `CGO_ENABLED=0` and
+ships as one static binary. So the picker sits behind a build tag, a default
+`go build ./...` never reaches it, and a build without it says so when asked
+for the picker rather than shipping a subcommand that cannot work.
 
 ```
-go build -tags gui ./cmd/306gapps-gui
+go build -tags gui ./cmd/306gapps      # with the desktop picker
+go build ./cmd/306gapps                # without
 ```
 
-On Debian or Ubuntu that needs `libgl1-mesa-dev` and `xorg-dev`.
+On Debian or Ubuntu the tagged build needs `libgl1-mesa-dev`, `xorg-dev`,
+`libwayland-dev`, `libxkbcommon-dev` and `wayland-protocols`.
+
+Released binaries carry the picker on Linux and Windows, amd64 and arm64.
+macOS builds are command line only.
 
 ## Testing
 
