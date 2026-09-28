@@ -1,5 +1,12 @@
 name: release
 
+# A tag publishes. A push to dev only builds artifacts, so the run says which
+# it is rather than every run reading as "release".
+run-name: >-
+  ${{ github.ref_type == 'tag'
+      && format('release {0}', github.ref_name)
+      || format('dev build {0}', github.sha) }}
+
 # Publishes binaries for a tag. The command line is pure Go and cross-compiles
 # from anywhere; the picker needs cgo for the GUI toolkit, so it is built on a
 # runner of the operating system it is for rather than cross-compiled.
