@@ -43,6 +43,9 @@ func buildRecovery(plan *stage.Plan, w *writer, opt Options) error {
 	if err := w.addBytes("installer/digests.txt", 0o644, digestList(entries)); err != nil {
 		return err
 	}
+	if err := w.addBytes("installer/packages.txt", 0o644, packagesFile(plan)); err != nil {
+		return err
+	}
 	if opt.Busybox != "" {
 		if err := w.addFile("installer/busybox", opt.Busybox, 0o755); err != nil {
 			return fmt.Errorf("bundle busybox: %w", err)

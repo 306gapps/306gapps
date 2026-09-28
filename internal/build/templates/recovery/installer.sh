@@ -229,8 +229,12 @@ fi
 mkdir -p "$SYSROOT/etc/306gapps"
 cp -f "$LIST" "$SYSROOT/etc/306gapps/files.list"
 cp -f "$TMP/installer/release.txt" "$SYSROOT/etc/306gapps/release.txt"
-set_meta "$SYSROOT/etc/306gapps/files.list" 0644 "u:object_r:system_file:s0"
-set_meta "$SYSROOT/etc/306gapps/release.txt" 0644 "u:object_r:system_file:s0"
+# The package ids an uninstall needs to clear app data with.
+cp -f "$TMP/installer/packages.txt" "$SYSROOT/etc/306gapps/packages.txt" 2>/dev/null
+for f in files.list release.txt packages.txt; do
+  [ -f "$SYSROOT/etc/306gapps/$f" ] &&
+    set_meta "$SYSROOT/etc/306gapps/$f" 0644 "u:object_r:system_file:s0"
+done
 
 ui_print " "
 ui_print "- done. Wipe cache/dalvik before rebooting."

@@ -84,6 +84,62 @@ awk -F'\t' '{print $1}' "$RECORD" | while IFS= read -r rel; do
   done
 done
 
+# ---- app data --------------------------------------------------------------
+#
+# Removing the system apk leaves the app's data, any update the Play Store
+# installed to /data/app, and its compiled profiles. Left behind, a later
+# reinstall inherits stale state and an orphaned /data/app update shadows
+# nothing at all.
+PKGLIST="$SYSROOT/etc/306gapps/packages.txt"
+if [ -s "$PKGLIST" ]; then
+  if ! grep -q " /data " /proc/mounts 2>/dev/null; then
+    # Both may fail -- /data is often encrypted in recovery, and the caller
+    # may be running under set -e -- so neither is allowed to be fatal.
+    mount "$PREFIX/data" 2>/dev/null || mount -o rw "$PREFIX/data" 2>/dev/null || true
+  fi
+
+  if [ -d "$PREFIX/data/data" ] || [ -d "$PREFIX/data/app" ]; then
+    ui_print "- clearing app data"
+    CLEARED=0
+    # drop_data removes one path if it is there. Written as a function with an
+    # explicit test rather than an && chain, which returns false when the path
+    # is absent and would abort a caller running under set -e.
+    drop_data() {
+      if [ -e "$1" ]; then
+        rm -rf "$1"
+        CLEARED=$((CLEARED + 1))
+      fi
+      return 0
+    }
+
+    while IFS= read -r pkg; do
+      [ -z "$pkg" ] && continue
+      drop_data "$PREFIX/data/data/$pkg"
+      drop_data "$PREFIX/data/misc/profiles/ref/$pkg"
+
+      # Per-user copies, one directory per user id.
+      for base in "$PREFIX/data/user" "$PREFIX/data/user_de" \
+                  "$PREFIX/data/misc/profiles/cur"; do
+        if [ -d "$base" ]; then
+          for u in "$base"/*; do
+            drop_data "$u/$pkg"
+          done
+        fi
+      done
+
+      # Updates the Play Store installed over the system app. Modern Android
+      # nests these under a random directory, so look one level down too.
+      for d in "$PREFIX/data/app/$pkg"-* "$PREFIX/data/app"/*/"$pkg"-*; do
+        drop_data "$d"
+      done
+    done < "$PKGLIST"
+    ui_print "  cleared $CLEARED"
+  else
+    ui_print "- /data is not readable (encrypted?); app data left in place"
+    ui_print "  format data, or clear storage per app once booted"
+  fi
+fi
+
 # The survival script must go, or the next dirty flash restores everything.
 if [ -f "$SYSROOT/addon.d/69-306gapps.sh" ]; then
   ui_print "- removing the addon.d survival script"

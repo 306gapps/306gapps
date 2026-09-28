@@ -22,6 +22,16 @@ export GAPPS_CACHE="$W/cache"
 ROM="$W/rom"
 mkdir -p "$ROM/system/system/addon.d" "$ROM/product/app/QuickSearchBox" \
          "$ROM/system_ext/priv-app/Dialer" "$ROM/product/app/RomApp"
+# App data, a Play Store update, and profiles, as a booted device would have.
+mkdir -p "$ROM/data/data/com.google.android.gms" \
+         "$ROM/data/user/0/com.google.android.gms" \
+         "$ROM/data/user_de/0/com.google.android.gms" \
+         "$ROM/data/app/~~abc==/com.google.android.gms-x1" \
+         "$ROM/data/misc/profiles/ref/com.google.android.gms" \
+         "$ROM/data/data/com.example.unrelated"
+echo x > "$ROM/data/data/com.google.android.gms/state"
+echo x > "$ROM/data/app/~~abc==/com.google.android.gms-x1/base.apk"
+echo x > "$ROM/data/data/com.example.unrelated/keep"
 printf 'ro.build.version.sdk=36\n' > "$ROM/system/system/build.prop"
 echo stale > "$ROM/product/app/QuickSearchBox/QuickSearchBox.apk"
 echo stale > "$ROM/system_ext/priv-app/Dialer/Dialer.apk"
@@ -56,6 +66,11 @@ check "empty dirs pruned"           '[ ! -d "$ROM/product/priv-app/PrebuiltGmsCo
 check "ROM file untouched"          '[ -s "$ROM/product/app/RomApp/RomApp.apk" ]'
 check "ROM dir not pruned"          '[ -d "$ROM/product/app/RomApp" ]'
 check "no 306gapps leftovers"       '[ -z "$(find "$ROM" -name "*306gapps*")" ]'
+check "app data cleared"            '[ ! -e "$ROM/data/data/com.google.android.gms" ]'
+check "per-user data cleared"       '[ ! -e "$ROM/data/user/0/com.google.android.gms" ] && [ ! -e "$ROM/data/user_de/0/com.google.android.gms" ]'
+check "play store update cleared"   '[ ! -e "$ROM/data/app/~~abc==/com.google.android.gms-x1" ]'
+check "profiles cleared"            '[ ! -e "$ROM/data/misc/profiles/ref/com.google.android.gms" ]'
+check "unrelated app data kept"     '[ -s "$ROM/data/data/com.example.unrelated/keep" ]'
 
 echo "== uninstalling twice is harmless =="
 run_zip "$W/uninstall.zip" > "$W/log3" 2>&1 || { echo "  FAIL second run errored"; fail=1; }

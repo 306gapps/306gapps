@@ -294,6 +294,20 @@ func propsFile(plan *stage.Plan) []byte {
 	return []byte(b.String())
 }
 
+// packagesFile lists the selection's Android package ids so an uninstall can clear app data.
+func packagesFile(plan *stage.Plan) []byte {
+	seen := map[string]bool{}
+	var out []string
+	for _, p := range plan.Packages {
+		if p.Package != "" && !seen[p.Package] {
+			seen[p.Package] = true
+			out = append(out, p.Package)
+		}
+	}
+	sort.Strings(out)
+	return linesFile(out)
+}
+
 func linesFile(lines []string) []byte {
 	if len(lines) == 0 {
 		return nil
