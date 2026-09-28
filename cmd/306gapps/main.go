@@ -187,6 +187,12 @@ func cmdGUI(ctx context.Context, args []string) error {
 	if err := checkTrailingFlags(fs); err != nil {
 		return err
 	}
+	// With nothing to draw on the toolkit blocks instead of returning an error.
+	if !haveDisplay() {
+		return errors.New("there is no display to open a window on.\n\n" +
+			"Set DISPLAY or WAYLAND_DISPLAY, or use \"306gapps pick\" for the " +
+			"terminal picker, which does the same job.")
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
