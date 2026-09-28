@@ -8,7 +8,9 @@
 [ "${UTIL_LOADED:-0}" = 1 ] || . "$TMP/installer/util.sh"
 
 PREFIX="${GAPPS_PREFIX:-}"
+# shellcheck disable=SC2034  # appended to and read by util.sh
 MOUNTED_BY_US=""
+# shellcheck disable=SC2034  # read by log() in util.sh
 VERBOSE=0
 
 ui_print "========================================="
@@ -57,6 +59,8 @@ TOTAL=$(wc -l < "$RECORD" | tr -d ' ')
 ui_print "- removing $TOTAL files"
 
 N=0
+# Only rel is wanted; the rest of the record is read to discard it.
+# shellcheck disable=SC2034
 while IFS="$(printf '\t')" read -r rel mode ctx size link; do
   [ -z "$rel" ] && continue
   part=${rel%%/*}

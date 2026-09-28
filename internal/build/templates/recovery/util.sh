@@ -185,4 +185,5 @@ cleanup() {
   rm -rf "$TMP"
 }
 
+# shellcheck disable=SC2034  # the guard the sourcing scripts test
 UTIL_LOADED=1

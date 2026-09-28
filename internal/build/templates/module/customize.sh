@@ -45,8 +45,11 @@ fi
 
 ui_print "- setting permissions"
 set_perm_recursive "$MODPATH/system" 0 0 0755 0644
+# Piped into read rather than iterated as $(find ...): word splitting would
+# break on a path containing a space, and the set_perm_recursive would then be
+# applied to the wrong directory or none at all.
 for d in app priv-app; do
-  for p in $(find "$MODPATH/system" -type d -name "$d" 2>/dev/null); do
+  find "$MODPATH/system" -type d -name "$d" 2>/dev/null | while IFS= read -r p; do
     set_perm_recursive "$p" 0 0 0755 0644
   done
 done

@@ -15,8 +15,10 @@
 # is how the installer is exercised off-device. Empty in production.
 PREFIX="${GAPPS_PREFIX:-}"
 
+# shellcheck disable=SC2034  # appended to and read by util.sh
 MOUNTED_BY_US=""
 LIST="$TMP/installer/files.list"
+# shellcheck disable=SC2034  # read by log() in util.sh
 VERBOSE=$(sed -n 's/^verbose=//p' "$TMP/installer/release.txt")
 
 NAME=$(sed -n 's/^name=//p' "$TMP/installer/release.txt")
