@@ -175,12 +175,26 @@ func Load(r io.Reader) (*Manifest, error) {
 	dec := json.NewDecoder(r)
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return nil, fmt.Errorf("decode manifest: %w", err)
+		return nil, decodeError(err)
 	}
 	if err := m.Validate(); err != nil {
 		return nil, err
 	}
 	return &m, nil
+}
+
+// An unknown field almost always means a schema mismatch, not a corrupt download.
+func decodeError(err error) error {
+	const unknown = "json: unknown field "
+	if i := strings.Index(err.Error(), unknown); i >= 0 {
+		field := strings.Trim(err.Error()[i+len(unknown):], `"`)
+		return fmt.Errorf(
+			"this release was published for a different version of 306gapps "+
+				"(it carries a %q field this build does not know).\n"+
+				"Update 306gapps, or pick a release published since it was built.",
+			field)
+	}
+	return fmt.Errorf("decode manifest: %w", err)
 }
 
 func LoadFile(name string) (*Manifest, error) {

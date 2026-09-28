@@ -224,3 +224,17 @@ func TestValidateRejectsRemovalOnAnUnknownPartition(t *testing.T) {
 	m.Packages[0].Removes = []string{"odm/app/Foo"}
 	wantErr(t, m, "unknown partition")
 }
+
+// A release published either side of a schema change is the common cause of a
+// strict-decoding failure, and "unknown field" alone reads like corruption.
+func TestLoadExplainsASchemaMismatch(t *testing.T) {
+	_, err := Load(strings.NewReader(`{"schema":1,"packages":[{"category":"core"}]}`))
+	if err == nil {
+		t.Fatal("an unknown field should be refused")
+	}
+	for _, want := range []string{"different version of 306gapps", "category", "Update 306gapps"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("message should mention %q: %v", want, err)
+		}
+	}
+}
