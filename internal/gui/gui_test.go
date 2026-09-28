@@ -5,6 +5,8 @@ package gui
 import (
 	"context"
 	"encoding/json"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/widget"
 	"os"
 	"path/filepath"
 	"strings"
@@ -551,5 +553,28 @@ func TestOTAFieldsFollowTheState(t *testing.T) {
 	u.refreshOTA()
 	if u.ota.keys.Text != "" {
 		t.Errorf("cleared keys should clear the field, got %q", u.ota.keys.Text)
+	}
+}
+
+// Every Browse button must survive being pressed. Setting the state directly
+// is not the same test: it skips the callback, which is where the picker is
+// actually built, and that is where resizing before showing crashed the app.
+func TestBrowseButtonsOpenWithoutCrashing(t *testing.T) {
+	u := loaded(t)
+	u.target.SetSelected(targetLabel(build.TargetOTA))
+	for name, b := range map[string]*widget.Button{
+		"target-files": u.ota.browseBase,
+		"keys":         u.ota.browseKeys,
+		"clear keys":   u.ota.clearKeys,
+		"otatools":     u.ota.browseTools,
+	} {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					t.Errorf("the %s button panicked: %v", name, r)
+				}
+			}()
+			b.Tapped(&fyne.PointEvent{})
+		}()
 	}
 }

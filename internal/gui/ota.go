@@ -24,6 +24,23 @@ type otaForm struct {
 	tools *widget.Entry
 	grow  *widget.Check
 	note  *widget.Label
+
+	browseBase  *widget.Button
+	browseKeys  *widget.Button
+	clearKeys   *widget.Button
+	browseTools *widget.Button
+}
+
+// sized is the dialog interface the two pickers share.
+type sized interface {
+	Show()
+	Resize(fyne.Size)
+}
+
+// Show must come first: FileDialog.Resize calls MinSize, which panics on a field Show creates.
+func showSized(d sized) {
+	d.Show()
+	d.Resize(fyne.NewSize(760, 560))
 }
 
 func (u *window) buildOTAForm() *otaForm {
@@ -41,7 +58,7 @@ func (u *window) buildOTAForm() *otaForm {
 		u.state.otaGrow = on
 	})
 
-	browseFile := widget.NewButton("Browse…", func() {
+	f.browseBase = widget.NewButton("Browse…", func() {
 		d := dialog.NewFileOpen(func(r fyne.URIReadCloser, err error) {
 			if err != nil || r == nil {
 				return
@@ -51,22 +68,21 @@ func (u *window) buildOTAForm() *otaForm {
 			u.refreshOTA()
 		}, u.win)
 		d.SetFilter(storage.NewExtensionFileFilter([]string{".zip"}))
-		d.Resize(fyne.NewSize(760, 560))
-		d.Show()
+		showSized(d)
 	})
 
-	browseKeys := widget.NewButton("Browse…", func() {
+	f.browseKeys = widget.NewButton("Browse…", func() {
 		u.pickFolder(func(path string) {
 			u.state.otaKeys = path
 			u.refreshOTA()
 		})
 	})
-	clearKeys := widget.NewButton("Clear", func() {
+	f.clearKeys = widget.NewButton("Clear", func() {
 		u.state.otaKeys = ""
 		u.refreshOTA()
 	})
 
-	browseTools := widget.NewButton("Browse…", func() {
+	f.browseTools = widget.NewButton("Browse…", func() {
 		u.pickFolder(func(path string) {
 			u.state.otaTools = path
 			u.refreshOTA()
@@ -80,9 +96,9 @@ func (u *window) buildOTAForm() *otaForm {
 
 	f.panel = container.NewVBox(
 		widget.NewSeparator(),
-		row("ROM target-files", f.base, browseFile),
-		row("Signing keys", f.keys, browseKeys, clearKeys),
-		row("otatools", f.tools, browseTools),
+		row("ROM target-files", f.base, f.browseBase),
+		row("Signing keys", f.keys, f.browseKeys, f.clearKeys),
+		row("otatools", f.tools, f.browseTools),
 		f.grow,
 		f.note,
 	)
@@ -115,8 +131,7 @@ func (u *window) pickFolder(set func(string)) {
 		}
 		set(list.Path())
 	}, u.win)
-	d.Resize(fyne.NewSize(760, 560))
-	d.Show()
+	showSized(d)
 }
 
 // refreshOTA shows the panel only for the ota target and says what the inputs will produce.
