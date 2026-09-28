@@ -27,3 +27,12 @@ func TestResolveReleaseAcceptsThePrefixedVersion(t *testing.T) {
 		t.Error("an unknown version should still be refused")
 	}
 }
+
+func TestOrFallsBack(t *testing.T) {
+	if or("", "latest") != "latest" {
+		t.Error("empty should fall back")
+	}
+	if or("17", "latest") != "17" {
+		t.Error("a value should win")
+	}
+}

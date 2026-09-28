@@ -65,6 +65,29 @@ func (u *window) askToSave() {
 	d.Show()
 }
 
+func (u *window) onDelete() {
+	label := u.variant.Selected
+	if !strings.HasPrefix(label, savedPrefix) {
+		dialog.ShowInformation("Nothing to delete",
+			"Choose one of your saved selections first. The built-in presets "+
+				"come with the release and cannot be removed.", u.win)
+		return
+	}
+	name := strings.TrimPrefix(label, savedPrefix)
+	dialog.ShowConfirm("Delete this selection?", name, func(ok bool) {
+		if !ok {
+			return
+		}
+		if err := u.configs.Delete(name); err != nil {
+			dialog.ShowError(err, u.win)
+			return
+		}
+		u.state.keptLabel = ""
+		u.rebuildVariants()
+		u.variant.SetSelected(customVariant)
+	}, u.win)
+}
+
 func (u *window) onExport() {
 	label := u.variant.Selected
 	if !strings.HasPrefix(label, savedPrefix) {

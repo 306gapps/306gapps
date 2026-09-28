@@ -30,8 +30,13 @@ func Run(ctx context.Context, src *source.Source, outDir string) error {
 	w := a.NewWindow("306gapps " + version.String())
 	w.Resize(fyne.NewSize(940, 700))
 
-	ui := &window{state: s, win: w}
+	ui := &window{state: s, win: w, app: a}
+	ui.loadPrefs(a)
 	w.SetContent(ui.build())
+	w.SetCloseIntercept(func() {
+		ui.savePrefs(a)
+		w.Close()
+	})
 
 	// Fetch after the window is up so a slow network shows a window, not nothing.
 	go ui.loadIndex()
@@ -43,6 +48,7 @@ func Run(ctx context.Context, src *source.Source, outDir string) error {
 type window struct {
 	*state
 	win fyne.Window
+	app fyne.App
 
 	releases *widget.Select
 
@@ -58,6 +64,7 @@ type window struct {
 	expertBar  *fyne.Container
 	importBtn  *widget.Button
 	exportBtn  *widget.Button
+	deleteBtn  *widget.Button
 	outEntry   *widget.Entry
 	buildBtn   *widget.Button
 	status     *widget.Label
@@ -168,6 +175,8 @@ func (u *window) build() fyne.CanvasObject {
 
 	u.importBtn = widget.NewButton("Import…", u.onImport)
 	u.exportBtn = widget.NewButton("Export…", u.onExport)
+	u.deleteBtn = widget.NewButton("Delete", u.onDelete)
+	u.deleteBtn.Importance = widget.DangerImportance
 
 	u.nameEntry = widget.NewEntry()
 	u.nameEntry.SetPlaceHolder("306gapps-<release>-<format>.zip")
@@ -179,7 +188,7 @@ func (u *window) build() fyne.CanvasObject {
 	u.expertBar = container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("File name"), nil, u.nameEntry),
 		container.NewBorder(nil, nil, widget.NewLabel("Saved selections"),
-			container.NewHBox(u.importBtn, u.exportBtn), layout.NewSpacer()),
+			container.NewHBox(u.importBtn, u.exportBtn, u.deleteBtn), layout.NewSpacer()),
 	)
 	u.expertBar.Hide()
 
@@ -225,6 +234,11 @@ func (u *window) loadIndex() {
 	}
 	u.index = idx
 	u.refs = map[string]source.ReleaseRef{}
+	// The release chosen last time, if it is still published.
+	want := ""
+	if u.app != nil {
+		want = u.preferredRelease(u.app)
+	}
 	var labels []string
 	for _, api := range idx.APIs() {
 		ref, ok := idx.Latest(api)
@@ -242,7 +256,14 @@ func (u *window) loadIndex() {
 		u.releases.Options = labels
 		u.releases.Refresh()
 		if len(labels) > 0 {
-			u.releases.SetSelected(labels[0])
+			pick := labels[0]
+			for label, ref := range u.refs {
+				if ref.ID == want {
+					pick = label
+					break
+				}
+			}
+			u.releases.SetSelected(pick)
 		} else {
 			u.status.SetText("this source has published no releases yet")
 		}

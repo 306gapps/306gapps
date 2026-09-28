@@ -747,3 +747,57 @@ func TestCollapsedRowsReserveNoHeight(t *testing.T) {
 		t.Error("an expanded row should take space")
 	}
 }
+
+// A saved selection can be removed; a built-in preset cannot.
+func TestDeletingASavedSelection(t *testing.T) {
+	u := loaded(t)
+	u.state.configs = &config.Store{Dir: t.TempDir()}
+	if err := u.configs.Save(config.Config{
+		Name: "Throwaway", Packages: []string{"gmscore"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	u.rebuildVariants()
+	u.variant.SetSelected(savedPrefix + "Throwaway")
+
+	if err := u.configs.Delete("Throwaway"); err != nil {
+		t.Fatal(err)
+	}
+	u.state.keptLabel = ""
+	u.rebuildVariants()
+	for _, o := range u.variant.Options {
+		if o == savedPrefix+"Throwaway" {
+			t.Error("a deleted selection should leave the list")
+		}
+	}
+	// And deleting one that is gone says so rather than pretending.
+	if err := u.configs.Delete("Throwaway"); err == nil {
+		t.Error("deleting a missing selection should report it")
+	}
+}
+
+// Expert mode and the output folder survive a restart; a selection does not,
+// because saving one is the explicit way to keep it.
+func TestPreferencesRoundTrip(t *testing.T) {
+	a := test.NewApp()
+	u := loaded(t)
+	u.app = a
+	u.state.expert = true
+	u.state.outDir = "/tmp/somewhere"
+	u.savePrefs(a)
+
+	other := loaded(t)
+	other.app = a
+	other.state.expert = false
+	other.state.outDir = ""
+	other.loadPrefs(a)
+	if !other.state.expert {
+		t.Error("expert mode should survive")
+	}
+	if other.state.outDir != "/tmp/somewhere" {
+		t.Errorf("output folder should survive, got %q", other.state.outDir)
+	}
+	if other.preferredRelease(a) == "" {
+		t.Error("the release should have been remembered")
+	}
+}

@@ -20,6 +20,7 @@ import (
 
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/catalog"
+	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/sign"
 	"github.com/306gapps/306gapps/internal/source"
@@ -78,6 +79,8 @@ func run() error {
 		return cmdUninstaller(ctx, args)
 	case "cache":
 		return cmdCache(args)
+	case "configs":
+		return cmdConfigs(args)
 	case "validate":
 		return cmdValidate(args)
 	case "version":
@@ -105,6 +108,7 @@ usage:
   306gapps build [flags]           build without the picker
   306gapps uninstaller [flags]     build a zip that removes an install
   306gapps cache [info|clear]      inspect or empty the download cache
+  306gapps configs [list|delete]   saved selections from the picker
   306gapps validate <manifest>     check a manifest for consistency
 
 common flags:
@@ -272,6 +276,50 @@ func cmdList(ctx context.Context, args []string) error {
 	return w.Flush()
 }
 
+func cmdConfigs(args []string) error {
+	fs := flag.NewFlagSet("configs", flag.ContinueOnError)
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
+	store := config.New()
+	switch fs.Arg(0) {
+	case "", "list":
+		saved, err := store.List()
+		if err != nil {
+			return err
+		}
+		if len(saved) == 0 {
+			fmt.Println("no saved selections")
+			return nil
+		}
+		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+		fmt.Fprintln(w, "NAME\tPACKAGES\tRELEASE\tSAVED")
+		for _, c := range saved {
+			fmt.Fprintf(w, "%s\t%d\t%s\t%s\n",
+				c.Name, len(c.Packages), or(c.Release, "latest"),
+				c.Created.Format("2006-01-02"))
+		}
+		return w.Flush()
+	case "delete":
+		if fs.NArg() < 2 {
+			return errors.New("which one? 306gapps configs delete <name>")
+		}
+		return store.Delete(fs.Arg(1))
+	default:
+		return fmt.Errorf("unknown configs subcommand %q (want list or delete)", fs.Arg(0))
+	}
+}
+
+func or(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
 func variantNames(c *catalog.Catalog) []string {
 	var out []string
 	for _, v := range c.Variants() {
@@ -298,6 +346,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 	release := fs.String("release", "latest", "release ID, Android version, or \"latest\"")
 	pkgs := fs.String("packages", "", "comma-separated package IDs (default: the release's defaults)")
 	variant := fs.String("variant", "", "preset selection: core, basic, omni, stock, full, everything")
+	confName := fs.String("config", "", "a selection saved from the picker")
 	targetName := fs.String("target", string(build.TargetRecovery),
 		"package format: "+strings.Join(targetNames(), ", "))
 	out := fs.String("out", "", "output zip path (default: ./306gapps-<release>-<target>.zip)")
@@ -341,6 +390,15 @@ func cmdBuild(ctx context.Context, args []string) error {
 
 	c := catalog.New(m)
 	sel := c.Defaults()
+	var keepStock []string
+	if *confName != "" {
+		saved, err := config.New().Load(*confName)
+		if err != nil {
+			return err
+		}
+		sel = c.Prune(saved.Packages)
+		keepStock = saved.KeepStock
+	}
 	if *variant != "" {
 		v, ok := c.Variant(*variant)
 		if !ok {
@@ -351,7 +409,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 	if *pkgs != "" {
 		// -packages adds to -variant rather than replacing it.
-		if *variant == "" {
+		if *variant == "" && *confName == "" {
 			sel = nil
 		}
 		for _, id := range strings.Split(*pkgs, ",") {
@@ -377,7 +435,8 @@ func cmdBuild(ctx context.Context, args []string) error {
 
 	var lastPath string
 	plan, err := stage.Build(ctx, s, m, res, stage.Options{
-		Workers: *workers,
+		Workers:   *workers,
+		KeepStock: keepStock,
 		Progress: func(f manifest.File, done, total int64) {
 			if done >= total && f.Path != lastPath {
 				lastPath = f.Path
