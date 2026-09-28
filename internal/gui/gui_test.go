@@ -224,3 +224,58 @@ func TestUntickedPackagesShowTheirSummary(t *testing.T) {
 		t.Error("an optional package must not claim to be required")
 	}
 }
+
+func TestFilterNarrowsTheList(t *testing.T) {
+	u := loaded(t)
+	all := len(u.rows)
+
+	u.filter.SetText("dialer")
+	u.rebuildList()
+	if len(u.rows) >= all {
+		t.Fatalf("filter did not narrow: %d of %d", len(u.rows), all)
+	}
+	for id := range u.rows {
+		if !strings.Contains(id, "dialer") {
+			t.Errorf("%s does not match the filter", id)
+		}
+	}
+
+	u.filter.SetText("")
+	u.rebuildList()
+	if len(u.rows) != all {
+		t.Errorf("clearing the filter should restore every row, got %d of %d",
+			len(u.rows), all)
+	}
+}
+
+func TestFilterMatchesIdNameAndCategory(t *testing.T) {
+	u := loaded(t)
+	for _, needle := range []string{"vending", "Play Store", "core", "PLAY"} {
+		u.filter.SetText(needle)
+		u.rebuildList()
+		if _, ok := u.rows["vending"]; !ok {
+			t.Errorf("filtering by %q should find vending", needle)
+		}
+	}
+}
+
+// Selections live in the state, so filtering must not silently drop them.
+func TestFilteringKeepsTheSelection(t *testing.T) {
+	u := loaded(t)
+	u.selected["dialer-google"] = true
+	u.resolve()
+	before := u.res.Size
+
+	u.filter.SetText("nothing matches this")
+	u.rebuildList()
+	u.refreshSummary()
+
+	if u.res.Size != before {
+		t.Error("filtering changed what would be built")
+	}
+	u.filter.SetText("")
+	u.rebuildList()
+	if !u.rows["dialer-google"].check.Checked {
+		t.Error("the selection was lost across filtering")
+	}
+}

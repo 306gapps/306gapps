@@ -41,7 +41,9 @@ type window struct {
 	*state
 	win fyne.Window
 
-	releases   *widget.Select
+	releases *widget.Select
+
+	filter     *widget.Entry
 	list       *fyne.Container
 	summaryLbl *widget.Label
 	warning    *widget.Label
@@ -89,10 +91,18 @@ func (u *window) build() fyne.CanvasObject {
 	u.buildBtn.Importance = widget.HighImportance
 	u.buildBtn.Disable()
 
+	u.filter = widget.NewEntry()
+	u.filter.SetPlaceHolder("Filter by name, id or category")
+	u.filter.OnChanged = func(string) { u.rebuildList(); u.refreshSummary() }
+	clear := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
+		u.filter.SetText("")
+	})
+
 	u.list = container.NewVBox()
 
 	top := container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("Release"), nil, u.releases),
+		container.NewBorder(nil, nil, widget.NewLabel("Filter"), clear, u.filter),
 		widget.NewSeparator(),
 	)
 	bottom := container.NewVBox(
@@ -168,19 +178,59 @@ func (u *window) onRelease(label string) {
 func (u *window) rebuildList() {
 	u.list.RemoveAll()
 	u.rows = map[string]*packageRow{}
-	for _, category := range u.categories() {
-		header := widget.NewLabelWithStyle(
-			categoryTitle(category), fyne.TextAlignLeading,
-			fyne.TextStyle{Bold: true})
-		u.list.Add(header)
 
+	needle := ""
+	if u.filter != nil {
+		needle = strings.ToLower(strings.TrimSpace(u.filter.Text))
+	}
+
+	shown := 0
+	for _, category := range u.categories() {
+		var rows []fyne.CanvasObject
 		for _, p := range u.packagesIn(category) {
-			u.list.Add(u.packageRow(p))
+			if !matchesFilter(p, category, needle) {
+				continue
+			}
+			rows = append(rows, u.packageRow(p))
+		}
+		// A heading for an empty category is just noise while filtering.
+		if len(rows) == 0 {
+			continue
+		}
+		shown += len(rows)
+		u.list.Add(widget.NewLabelWithStyle(
+			categoryTitle(category), fyne.TextAlignLeading,
+			fyne.TextStyle{Bold: true}))
+		for _, r := range rows {
+			u.list.Add(r)
 		}
 		u.list.Add(widget.NewSeparator())
 	}
+
+	if shown == 0 && needle != "" {
+		empty := widget.NewLabel("Nothing matches " + needle)
+		empty.Importance = widget.LowImportance
+		u.list.Add(empty)
+	}
+
 	u.list.Refresh()
 	u.buildBtn.Enable()
+}
+
+// matchesFilter is a plain substring test across the fields someone would
+// type: the name they see, the id they would pass on the command line, and the
+// category. Selections survive filtering because they live in the state, not
+// in the widgets.
+func matchesFilter(p manifest.Package, category, needle string) bool {
+	if needle == "" {
+		return true
+	}
+	for _, field := range []string{p.Name, p.ID, category, p.Summary} {
+		if strings.Contains(strings.ToLower(field), needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
@@ -206,17 +256,16 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	size := widget.NewLabel(humanSize(p.Size()))
 	size.Alignment = fyne.TextAlignTrailing
 
+	// Truncated to share the row; a paragraph per package ran to several screens.
 	note := widget.NewLabel("")
-	note.Wrapping = fyne.TextWrapWord
+	note.Wrapping = fyne.TextWrapOff
+	note.Truncation = fyne.TextTruncateEllipsis
 	note.Importance = widget.LowImportance
-	note.Hide()
 
-	row := &packageRow{check: check, note: note, pkg: p}
-	u.rows[p.ID] = row
+	u.rows[p.ID] = &packageRow{check: check, note: note, pkg: p}
 
-	head := container.NewBorder(nil, nil,
-		container.NewHBox(check, name, id), size, nil)
-	return container.NewVBox(head, note)
+	return container.NewBorder(nil, nil,
+		container.NewHBox(check, name, id), size, note)
 }
 
 // refreshRows brings every line back in line with the resolution.
@@ -243,13 +292,6 @@ func (u *window) refreshRows() {
 			note = row.pkg.Summary
 		}
 		row.note.SetText(note)
-		// An empty note still occupies a line, which over fifty packages is a
-		// screen of nothing.
-		if note == "" {
-			row.note.Hide()
-		} else {
-			row.note.Show()
-		}
 	}
 }
 
