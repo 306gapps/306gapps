@@ -1,112 +1,180 @@
 # 306gapps
 
-Build a custom Google apps package for a custom ROM: pick an Android release,
-pick the apps you want, get a flashable zip.
+Builds a flashable Google apps package for a custom ROM. Pick an Android
+release, pick the apps you want, get a zip.
 
-Payloads are dumped from Google's own Pixel OTA images by
-[306gapps-assets](https://github.com/306gapps/306gapps-assets), which publishes a
-manifest per Pixel build. This tool reads that manifest, downloads only the
-packages you selected, verifies every payload against its recorded digest, and
-assembles the package locally. Nothing is built on a server.
+The apps come from Google's Pixel OTA images. This tool downloads only the
+packages you selected, checks each one against its published digest, and
+assembles the package on your machine. Nothing is built on a server, and no
+account is needed.
 
-## Install
+## Download
+
+Grab a binary from [releases](https://github.com/306gapps/306gapps/releases).
+
+| you are on | file |
+| --- | --- |
+| Linux, normal PC | `306gapps-<version>-linux-amd64` |
+| Linux, ARM | `306gapps-<version>-linux-arm64` |
+| Windows, normal PC | `306gapps-<version>-windows-amd64.exe` |
+| Windows, ARM | `306gapps-<version>-windows-arm64.exe` |
+| macOS, Apple Silicon | `306gapps-<version>-darwin-arm64` |
+| macOS, Intel | `306gapps-<version>-darwin-amd64` |
+
+`SHA256SUMS` is there if you want to check the download.
+
+On Linux and macOS you will need to mark it executable:
 
 ```
-go install github.com/306gapps/306gapps/cmd/306gapps@latest
+chmod +x 306gapps-*
 ```
 
-## Use
+**Linux and Windows** builds have both a window-based picker and a terminal
+one. **macOS** builds are terminal only. The Linux window picker needs glibc
+2.34 or newer, which means Ubuntu 22.04+, Debian 12+, Fedora 35+ or similar;
+the terminal picker works anywhere.
 
-One binary, two front ends over one core. The manifest, the dependency
-resolver, the payload cache, the builders and the signer are shared, so a
-package built either way is the same bytes.
+## Getting a package
+
+Run it with no arguments and it opens the picker:
 
 ```
-306gapps                       # desktop picker, or the terminal one
-                               # when there is no display
-306gapps gui                   # desktop picker
-306gapps pick                  # terminal picker
-306gapps list                  # available releases
-306gapps list 16               # packages in the newest Android 16 release
-306gapps build -target module -packages gsa,photos,gboard
-306gapps cache info
+306gapps
 ```
 
-Useful flags:
+You get a window if your machine has a desktop, and the terminal picker if it
+does not. To force one or the other:
+
+```
+306gapps gui      window picker
+306gapps pick     terminal picker
+```
+
+Pick an Android release, tick the apps you want, choose a format, and it builds
+the zip. Flash that in recovery.
+
+### Picking apps
+
+Apps are grouped into families. Ticking one app may pull in others it needs, and
+the picker shows you when that happens rather than surprising you later. Some
+apps cannot be turned off because everything else depends on them.
+
+There are presets if you do not want to choose individually:
+
+| preset | what you get |
+| --- | --- |
+| `core` | Play services, Play Store, the framework. The minimum that signs in and installs apps. |
+| `basic` | core plus phone, messages, contacts, clock, carrier services |
+| `omni` | basic plus setup, keyboard, and the everyday Google apps |
+| `stock` | roughly what a Pixel ships with |
+| `full` | stock plus the rest |
+| `everything` | every package in the release |
+
+### The terminal picker
+
+`306gapps pick` walks through four screens: release, apps, format, build.
+
+```
+a17-cd1a.260905.001.b1 · Android 17
+
+  CORE
+> [■] gmscore                230.8 MB  Google Play services
+  [■] gsf                      1.1 MB  Google Services Framework
+  [x] vending                 99.1 MB  Google Play Store
+  [ ] verifier                 3.0 MB  Play Protect verifier
+  [·] syncadapters             3.9 MB  Contacts and Calendar sync adapters
+
+  SETUP WIZARD
+  [x] setupwizard             26.5 MB  Google Setup Wizard
+
+6 packages · 337.8 MB installed
+[·] 1 pulled in as dependencies
+space toggle · a all in section · n none · r reset · enter continue · q quit
+```
+
+| box | meaning |
+| --- | --- |
+| `[ ]` | not selected |
+| `[x]` | selected |
+| `[■]` | required, cannot be turned off |
+| `[·]` | you did not tick this, something you did tick needs it |
+
+| key | action |
+| --- | --- |
+| `↑` `↓` or `k` `j` | move |
+| `space` or `x` | tick or untick |
+| `a` | tick everything in this family |
+| `n` | untick everything in this family |
+| `r` | back to the defaults |
+| `enter` | next screen |
+| `esc` | previous screen |
+| `q` or `ctrl+c` | quit |
+
+The totals at the bottom are what will actually be installed, including anything
+pulled in as a dependency. If you pick two apps that cannot coexist, it says so
+in red and will not let you continue until you fix it.
+
+## Which format?
+
+**Recovery zip** is what most people want. Flash it in TWRP or LineageOS
+recovery. No root needed. It installs into the ROM, removes the AOSP apps your
+selection replaces, wipes the dalvik cache, and installs an `addon.d` script so
+your apps survive dirty-flashing the ROM later. It refuses to install if the
+package does not match your ROM's Android version.
+
+**Magisk / KernelSU module** needs root. Nothing is written into the ROM; the
+files are overlaid on top, so turning the module off puts the phone back exactly
+as it was. It also survives OTA updates. Safer, if you have root.
+
+**OTA** is for people who build and sign their own ROM. See below.
+
+## Without the picker
+
+```
+306gapps build -release 17 -variant stock -target recovery -out gapps.zip
+306gapps build -packages gsa,photos,gboard -target module
+306gapps list                available releases
+306gapps list 17             what is in the newest Android 17 release
+```
 
 | flag | meaning |
 | --- | --- |
-| `-source` | assets repo URL or a local mirror directory |
-| `-release` | release ID, an Android version, or `latest` |
-| `-packages` | comma-separated package IDs; omit for the release defaults |
+| `-release` | Android version (`17`), release ID, or `latest` |
+| `-variant` | one of the presets above |
+| `-packages` | comma-separated app IDs, added to `-variant` if you give both |
 | `-target` | `recovery`, `module`, or `ota` |
-| `-out` | output path |
+| `-out` | where to write the zip |
+| `-no-sign` | skip signing |
 
-`GAPPS_SOURCE` and `GAPPS_CACHE` set the defaults for `-source` and `-cache`.
+Flags go before any other argument.
 
-## Output formats
+## Undoing an install
 
-**`recovery`** — a recovery-flashable zip for TWRP or LineageOS recovery. No root
-needed. The installer resolves the active A/B slot and the partition block
-devices, mounts them read-write (clearing the read-only flag on dynamic `super`
-partitions and confirming writability by writing), checks free space before
-writing anything, removes the AOSP apps the selection supersedes, streams each
-payload straight out of the zip onto the partition, verifies it by SHA-256,
-recreates symlinks, applies build properties, and installs an `addon.d` script
-so the gapps survive a ROM dirty-flash. It refuses to install on a ROM whose API
-level does not match the package.
+```
+306gapps uninstaller
+```
 
-It bundles a static busybox so it runs against one predictable toolset rather
-than whatever applets a given recovery happens to ship. If that binary will not
-run, the installer falls back to the recovery's own tools rather than refusing.
-Pass `-no-busybox` to leave it out. BusyBox is GPLv2 and the zip carries the
-source offer alongside it.
+That zip removes anything this tool has installed. It is not tied to a release,
+so one copy works for any package you have built.
 
-**`module`** — a Magisk or KernelSU module. Requires root. Files are overlaid
-rather than written into the ROM, superseded AOSP apps are masked with `.replace`
-markers instead of deleted, and build properties are applied with `resetprop`, so
-disabling the module restores the stock ROM exactly. Much safer than the recovery
-route, and it survives OTAs.
+It does not put back the apps the install replaced. Dirty-flash your ROM first:
+that restores them, and `addon.d` restores the Google apps at the same time, so
+the uninstaller then has something to remove.
 
-### Signing
+## Signing
 
-Packages are signed by default. The signature is the JAR form a recovery
-checks -- per-entry digests in `META-INF/MANIFEST.MF`, digests of those in
-`META-INF/306GAPPS.SF`, and a PKCS#7 signature over that -- and it attests that
-the zip has not been altered since it was built. It is not a claim about who
-built it, which is why every gapps distribution self-signs and there is nothing
-to obtain from a certificate authority.
+Packages are signed so your recovery can confirm the zip has not been altered
+since it was built. The signing identity is made on first use and kept in your
+config directory. It says nothing about who built the package, which is why
+every gapps distribution signs its own.
 
-A signing identity is generated on first use and kept in your config directory.
-Pass `-key` and `-cert` to use your own, or `-no-sign` to skip it. The `ota`
-target is never signed here: the AOSP tools sign that one with your ROM's key.
+Your recovery may still warn about an unknown signer. That is expected.
 
-Signing is done in-process, so no JDK is needed.
+## Building your own OTA
 
-### Uninstalling
-
-`306gapps uninstaller` builds a small recovery-flashable zip that removes an
-install. It carries no payload and is not tied to a release: the installer
-records what it wrote to `/system/etc/306gapps/files.list`, and the uninstaller
-reads that back, so one zip removes any package this tool has ever produced.
-
-It deletes only what was installed, prunes the directories that leaves empty --
-stopping at anything the ROM still uses -- and removes the `addon.d` script,
-without which the next dirty flash would restore everything.
-
-Apps that the install replaced are not restored by it. Dirty-flash the ROM
-first: that brings them back, and `addon.d` restores the Google apps at the same
-time, so the uninstaller then has something to remove.
-
-**`ota`** — a sideloadable A/B package, signed with your own ROM keys. For people
-who build and sign their own ROM. See below.
-
-### The `ota` target
-
-A sideloadable package is verified against the certificate in
-`/system/etc/security/otacerts.zip`, so it has to be signed with the key the
-device already trusts — the one you sign your ROM with. If you have that key,
-this target does the whole job:
+Only useful if you build and sign your own ROM. A sideloaded package is checked
+against the certificate already on the device, so it has to be signed with your
+ROM's key.
 
 ```
 306gapps build -target ota \
@@ -117,127 +185,41 @@ this target does the whole job:
   -out       gapps-ota.zip
 ```
 
-It merges the selection into your target-files package and then runs
-`add_img_to_target_files` → `sign_target_files_apks` → `ota_from_target_files`,
-leaving you a zip to `adb sideload`.
-
-Leave `-ota-keys` off and it stops at the merged target-files package, which you
-can take through your own signing flow.
-
 | flag | meaning |
 | --- | --- |
-| `-ota-base` | your ROM's `*-target_files-*.zip` (required) |
+| `-ota-base` | your `*-target_files-*.zip` (required) |
 | `-ota-keys` | directory holding `releasekey.pk8` / `releasekey.x509.pem` etc |
 | `-ota-package-key` | key signing the OTA itself, no extension (default `<keys>/releasekey`) |
-| `-ota-tools` | otatools `bin` directory (default: `PATH`) |
+| `-ota-tools` | otatools `bin` directory (default: whatever is on `PATH`) |
 | `-ota-grow` | raise a partition's size budget if the selection overflows it |
 
-What the merge does to your target-files package:
+It merges your selection into the target-files package and runs the AOSP signing
+chain, leaving a zip you can `adb sideload`. Leave `-ota-keys` off and it stops
+at the merged target-files for you to sign yourself.
 
-- places payloads in `PRODUCT/`, `SYSTEM_EXT/`, `SYSTEM/`
-- records ownership and mode in each `META/*_filesystem_config.txt`, including
-  the parent directories, matching whichever path convention your package uses
-- marks every Google apk `PRESIGNED` in `META/apkcerts.txt` — they are signed
-  with Google's keys, and re-signing them would break GMS and Play Integrity
-- deletes superseded AOSP apps along with their `filesystem_config` and
-  `apkcerts` records
-- drops `IMAGES/` and `META/care_map.pb` so the images rebuild from the new trees
-- reports how much each partition grew against its budget in `misc_info.txt`
+Google's apks are kept as-is and marked presigned. Re-signing them breaks Play
+services and Play Integrity.
 
-SELinux labels are deliberately left alone: every path written falls under your
-ROM's existing generic `file_contexts` rules, which already resolve to
-`system_file`.
+`otatools` are AOSP host tools, so this target does not run on Windows.
 
-The toolchain and keys are checked **before** the merge starts, so a missing
-binary fails in a second rather than after copying a multi-gigabyte package.
+## Troubleshooting
 
-If you do not build your own ROM, use `recovery` or `module`.
+**It refuses to install, saying the API level does not match.** The package is
+for a different Android version than your ROM. Build one for the right release.
 
-## Layout
+**Not enough space.** Your `/product` partition has no room for the selection.
+Pick fewer apps, or pass `-ota-grow` if you are using the OTA target.
 
-```
-cmd/306gapps        CLI entry point
-internal/manifest   release manifest schema and validation
-internal/catalog    dependency and conflict resolution
-internal/source     release index, manifest fetch, content-addressed cache
-internal/stage      payload fetch and install-plan assembly
-internal/build      the three output targets
-internal/ota        target-files merge and AOSP signing chain
-internal/build/templates
-                    installer shell scripts, embedded into the binary
-internal/tui        terminal picker
-internal/gui        desktop picker (Fyne, behind the `gui` build tag)
-test/installer      runs the real recovery installer against a fake ROM tree
-test/ota            drives the ota target against a synthetic target-files package
-test/uninstaller    installs then uninstalls, checking nothing of ours survives
-```
+**First boot takes a long time.** Expected. Android recompiles every new app the
+first time it boots, which takes several minutes on most phones. A boot
+animation that keeps restarting is a problem; one that just keeps going is not.
 
-## Guarantees
-
-- **Nothing unverified is installed.** Every payload is checked against the
-  sha256 in the manifest before it enters the cache, and a corrupt download
-  leaves no cache entry behind. The recovery installer re-checks each payload by
-  digest on the device.
-- **Archives are opened, not just hashed.** A digest only proves the bytes are
-  the ones the source recorded. If the source recorded a truncated file -- which
-  is what an older erofs-utils silently produces -- every checksum in the chain
-  agrees and the package installs a broken app. Every apk, apex and jar is opened
-  before it is packed, and a build that finds one unreadable fails rather than
-  shipping it.
-- **Dependencies and conflicts are resolved before anything is downloaded**, so a
-  bad selection fails in milliseconds rather than after a gigabyte.
-- **Builds are reproducible.** The same selection produces a byte-identical zip:
-  entries are path-sorted with a fixed timestamp, and the signature carries no
-  timestamp of its own.
-- **Payloads are deflated, including the apks.** That looks like wasted work,
-  since an apk is a zip already, but Google leaves a large share of the entries
-  inside theirs uncompressed so they can be mapped -- GMS Core stores 1856 of
-  its 9453. Deflating the container recovers that: a package is about 1.6x
-  smaller than storing them, which on the core selection alone is 125 MiB.
-- **Symlinks are preserved.** Real dumps link an app's native libraries in from
-  the partition's `lib64`; copying the link as a regular file, or dropping it,
-  leaves an app that will not start.
-
-## The `gui` build tag
-
-The desktop picker uses Fyne, which needs cgo and the system GL, X and Wayland
-headers. The rest of the tool does not, and that is worth keeping: without the
-tag it cross-compiles to every platform from anywhere with `CGO_ENABLED=0` and
-ships as one static binary. So the picker sits behind a build tag, a default
-`go build ./...` never reaches it, and a build without it says so when asked
-for the picker rather than shipping a subcommand that cannot work.
-
-```
-go build -tags gui ./cmd/306gapps      # with the desktop picker
-go build ./cmd/306gapps                # without
-```
-
-On Debian or Ubuntu the tagged build needs `libgl1-mesa-dev`, `xorg-dev`,
-`libwayland-dev`, `libxkbcommon-dev` and `wayland-protocols`.
-
-Released binaries carry the picker on Linux and Windows, amd64 and arm64.
-macOS builds are command line only.
-
-## Testing
-
-```
-go test ./...
-python3 test/installer/make_fixture.py /tmp/fixture
-./test/installer/run.sh /path/to/306gapps /tmp/fixture
-./test/ota/run.sh       /path/to/306gapps /tmp/fixture
-```
-
-`test/installer` builds a real recovery zip, installs it into a fake ROM tree
-under busybox `ash`, and asserts the result — including that it refuses a
-mismatched Android version and a full partition.
-
-`test/ota` merges into a synthetic target-files package and drives stand-in AOSP
-binaries, asserting both the contents of the merge and the exact commands the
-signing chain runs.
+**The installer stops with an error.** It writes what went wrong to
+`/tmp/306gapps-error.log`. Pull that with `adb pull /tmp/306gapps-error.log`
+before rebooting, since `/tmp` does not survive.
 
 ## Licensing
 
-This tool builds packages; it ships no Google software. The apps themselves come
-from Google's Pixel images and are Google's, under Google's terms — the same
-footing every other gapps distribution stands on. Redistributing them is not
-something Google licenses, so run your own assets repo if that matters to you.
+This tool builds packages; it ships no Google software. The apps come from
+Google's Pixel images and remain Google's, under Google's terms, the same
+footing every other gapps distribution stands on.
