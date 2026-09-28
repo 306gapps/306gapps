@@ -65,6 +65,22 @@ jobs:
           sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev \
             libwayland-dev libxkbcommon-dev wayland-protocols
 
+      # The arm64 Windows image ships an x86-64 mingw gcc, which cannot
+      # assemble aarch64 -- cgo fails on runtime/cgo's gcc_arm64.S with "no
+      # such instruction: stp". llvm-mingw provides a native aarch64 clang.
+      - name: A C toolchain that can target arm64
+        if: matrix.os == 'windows-11-arm'
+        shell: pwsh
+        run: |
+          $v = "20260922"
+          $url = "https://github.com/mstorsjo/llvm-mingw/releases/download/$v/llvm-mingw-$v-ucrt-aarch64.zip"
+          Invoke-WebRequest -Uri $url -OutFile llvm-mingw.zip
+          Expand-Archive -Path llvm-mingw.zip -DestinationPath C:\ -Force
+          $bin = "C:\llvm-mingw-$v-ucrt-aarch64\bin"
+          echo $bin | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "CC=$bin\aarch64-w64-mingw32-clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "CXX=$bin\aarch64-w64-mingw32-clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Build
         shell: bash
         env:
