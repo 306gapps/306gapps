@@ -43,6 +43,7 @@ type window struct {
 
 	releases *widget.Select
 
+	variant    *widget.Select
 	filter     *widget.Entry
 	list       *fyne.Container
 	summaryLbl *widget.Label
@@ -50,6 +51,11 @@ type window struct {
 	target     *widget.Select
 	buildBtn   *widget.Button
 	status     *widget.Label
+
+	variantIDs map[string]string
+	// applyingVariant suppresses the select's callback while the label is synced,
+	// which would otherwise re-apply the preset and undo the change.
+	applyingVariant bool
 
 	refs map[string]source.ReleaseRef
 	// rows keeps the per-package widgets so the list can follow the resolution
@@ -98,6 +104,20 @@ func (u *window) build() fyne.CanvasObject {
 	u.buildBtn.Importance = widget.HighImportance
 	u.buildBtn.Disable()
 
+	u.variant = widget.NewSelect(nil, func(label string) {
+		if u.applyingVariant {
+			return
+		}
+		id, ok := u.variantIDs[label]
+		if !ok {
+			return
+		}
+		u.applyVariant(id)
+		u.rebuildList()
+		u.refreshSummary()
+	})
+	u.variant.PlaceHolder = "choose a starting point…"
+
 	u.filter = widget.NewEntry()
 	u.filter.SetPlaceHolder("Filter by name, id or family")
 	u.filter.OnChanged = func(string) { u.rebuildList(); u.refreshSummary() }
@@ -109,6 +129,7 @@ func (u *window) build() fyne.CanvasObject {
 
 	top := container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("Release"), nil, u.releases),
+		container.NewBorder(nil, nil, widget.NewLabel("Variant"), nil, u.variant),
 		container.NewBorder(nil, nil, widget.NewLabel("Filter"), clear, u.filter),
 		widget.NewSeparator(),
 	)
@@ -178,10 +199,47 @@ func (u *window) onRelease(label string) {
 				return
 			}
 			u.status.SetText("")
+			u.rebuildVariants()
 			u.rebuildList()
 			u.refreshSummary()
 		})
 	}()
+}
+
+const customVariant = "Custom"
+
+func (u *window) rebuildVariants() {
+	u.variantIDs = map[string]string{}
+	labels := []string{customVariant}
+	for _, v := range u.variants() {
+		label := fmt.Sprintf("%s — %d packages", v.Name, len(u.cat.Prune(v.Packages)))
+		u.variantIDs[label] = v.ID
+		labels = append(labels, label)
+	}
+	u.variant.Options = labels
+	u.variant.Refresh()
+}
+
+// refreshVariant points the select at whichever preset matches the selection, or Custom.
+func (u *window) refreshVariant() {
+	if u.variant == nil || len(u.variantIDs) == 0 {
+		return
+	}
+	want := customVariant
+	if id := u.matchingVariant(); id != "" {
+		for label, vid := range u.variantIDs {
+			if vid == id {
+				want = label
+				break
+			}
+		}
+	}
+	if u.variant.Selected == want {
+		return
+	}
+	u.applyingVariant = true
+	u.variant.SetSelected(want)
+	u.applyingVariant = false
 }
 
 // rebuildList redraws the whole package list, which only the release changing needs.
@@ -405,6 +463,7 @@ func (u *window) refreshRows() {
 
 func (u *window) refreshSummary() {
 	u.refreshRows()
+	u.refreshVariant()
 	u.summaryLbl.SetText(u.state.summary())
 	if u.resErr != nil {
 		u.warning.SetText(u.resErr.Error())

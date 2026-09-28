@@ -109,6 +109,69 @@ func (s *state) summary() string {
 	return line
 }
 
+func (s *state) variants() []manifest.Variant {
+	if s.cat == nil {
+		return nil
+	}
+	return s.cat.Variants()
+}
+
+// applyVariant replaces the selection with a preset.
+func (s *state) applyVariant(id string) {
+	v, ok := s.cat.Variant(id)
+	if !ok {
+		return
+	}
+	s.selected = map[string]bool{}
+	for _, pid := range s.cat.Prune(v.Packages) {
+		s.selected[pid] = true
+	}
+	s.resolve()
+}
+
+// matchingVariant names the preset the selection exactly matches, or "".
+func (s *state) matchingVariant() string {
+	if s.cat == nil || s.res == nil {
+		return ""
+	}
+	have := map[string]bool{}
+	for _, p := range s.res.Packages {
+		have[p.ID] = true
+	}
+	for _, v := range s.cat.Variants() {
+		want := map[string]bool{}
+		for _, id := range s.cat.Prune(v.Packages) {
+			want[id] = true
+		}
+		// Compare resolutions, not ticks: a preset that omits a dependency still installs it.
+		if r, err := s.cat.Resolve(keys(want)); err == nil && sameSet(r, have) {
+			return v.ID
+		}
+	}
+	return ""
+}
+
+func keys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func sameSet(r *catalog.Resolution, have map[string]bool) bool {
+	if len(r.Packages) != len(have) {
+		return false
+	}
+	for _, p := range r.Packages {
+		if !have[p.ID] {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *state) groups() []manifest.Group {
 	if s.cat == nil {
 		return nil

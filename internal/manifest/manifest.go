@@ -23,7 +23,16 @@ type Manifest struct {
 	Schema   int       `json:"schema"`
 	Release  Release   `json:"release"`
 	Groups   []Group   `json:"groups"`
+	Variants []Variant `json:"variants,omitempty"`
 	Packages []Package `json:"packages"`
+}
+
+// Variant is a preset selection; picking one replaces the current selection.
+type Variant struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Summary  string   `json:"summary,omitempty"`
+	Packages []string `json:"packages"`
 }
 
 // Group is a family of related packages, such as Chrome with its WebView and Trichrome library.

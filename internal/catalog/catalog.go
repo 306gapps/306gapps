@@ -57,6 +57,58 @@ func (c *Catalog) Groups() []manifest.Group {
 	return out
 }
 
+// Variants returns the presets, keeping only ones with something to select.
+func (c *Catalog) Variants() []manifest.Variant {
+	var out []manifest.Variant
+	for _, v := range c.m.Variants {
+		if len(c.Prune(v.Packages)) > 0 {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// Variant returns a preset by id.
+func (c *Catalog) Variant(id string) (manifest.Variant, bool) {
+	for _, v := range c.m.Variants {
+		if v.ID == id {
+			return v, true
+		}
+	}
+	return manifest.Variant{}, false
+}
+
+// Prune drops unknown ids and the later side of any conflicting pair, in manifest order.
+// Presets legitimately name both sides of a choice, so first one wins rather than erroring.
+func (c *Catalog) Prune(ids []string) []string {
+	want := map[string]bool{}
+	for _, id := range ids {
+		if _, ok := c.idx[id]; ok {
+			want[id] = true
+		}
+	}
+	var out []string
+	taken := map[string]bool{}
+	for _, p := range c.m.Packages {
+		if !want[p.ID] {
+			continue
+		}
+		clash := false
+		for _, other := range c.ConflictsWith(p.ID) {
+			if taken[other] {
+				clash = true
+				break
+			}
+		}
+		if clash {
+			continue
+		}
+		taken[p.ID] = true
+		out = append(out, p.ID)
+	}
+	return out
+}
+
 // ConflictsWith returns every package that cannot coexist with id, from either side's declaration.
 func (c *Catalog) ConflictsWith(id string) []string {
 	seen := map[string]bool{}

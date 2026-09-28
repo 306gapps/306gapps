@@ -29,7 +29,11 @@ func TestRenderSnapshot(t *testing.T) {
 	}
 	// Tick something that pulls a dependency in, so the snapshot shows the
 	// states that matter rather than only the idle one.
-	u.selected[pick] = true
+	if v := os.Getenv("GUI_SNAPSHOT_VARIANT"); v != "" {
+		u.applyVariant(v)
+	} else {
+		u.selected[pick] = true
+	}
 	if f := os.Getenv("GUI_SNAPSHOT_FILTER"); f != "" {
 		u.filter.SetText(f)
 		u.rebuildList()

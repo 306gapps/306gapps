@@ -222,6 +222,14 @@ func cmdList(ctx context.Context, args []string) error {
 	return w.Flush()
 }
 
+func variantNames(c *catalog.Catalog) []string {
+	var out []string
+	for _, v := range c.Variants() {
+		out = append(out, v.ID)
+	}
+	return out
+}
+
 // checkTrailingFlags rejects a flag written after a positional argument, which
 // flag.Parse stops at and silently ignores.
 func checkTrailingFlags(fs *flag.FlagSet) error {
@@ -239,6 +247,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 	src, cache := commonFlags(fs)
 	release := fs.String("release", "latest", "release ID, Android version, or \"latest\"")
 	pkgs := fs.String("packages", "", "comma-separated package IDs (default: the release's defaults)")
+	variant := fs.String("variant", "", "preset selection: core, basic, omni, stock, full, everything")
 	targetName := fs.String("target", string(build.TargetRecovery),
 		"package format: "+strings.Join(targetNames(), ", "))
 	out := fs.String("out", "", "output zip path (default: ./306gapps-<release>-<target>.zip)")
@@ -282,10 +291,23 @@ func cmdBuild(ctx context.Context, args []string) error {
 
 	c := catalog.New(m)
 	sel := c.Defaults()
+	if *variant != "" {
+		v, ok := c.Variant(*variant)
+		if !ok {
+			return fmt.Errorf("unknown variant %q (want one of %s)",
+				*variant, strings.Join(variantNames(c), ", "))
+		}
+		sel = c.Prune(v.Packages)
+	}
 	if *pkgs != "" {
-		sel = strings.Split(*pkgs, ",")
-		for i := range sel {
-			sel[i] = strings.TrimSpace(sel[i])
+		// -packages adds to -variant rather than replacing it.
+		if *variant == "" {
+			sel = nil
+		}
+		for _, id := range strings.Split(*pkgs, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				sel = append(sel, id)
+			}
 		}
 	}
 	res, err := c.Resolve(sel)

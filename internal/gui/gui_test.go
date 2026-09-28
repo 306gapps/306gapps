@@ -37,6 +37,11 @@ func fixture(t *testing.T) (*source.Source, source.ReleaseRef) {
 			{ID: "core", Name: "Core"},
 			{ID: "apps", Name: "Apps"},
 		},
+		Variants: []manifest.Variant{
+			{ID: "core", Name: "Core", Packages: []string{"gmscore", "vending"}},
+			{ID: "full", Name: "Full", Packages: []string{
+				"gmscore", "vending", "dialer-google", "dialer-aosp"}},
+		},
 		Packages: []manifest.Package{
 			{ID: "gmscore", Name: "Play services", Group: "core", Required: true,
 				Files: []manifest.File{file("product/priv-app/Gms/Gms.apk", "gms.apk", 1000)}},
@@ -79,6 +84,7 @@ func loaded(t *testing.T) *window {
 	if err := u.loadRelease(ref); err != nil {
 		t.Fatal(err)
 	}
+	u.rebuildVariants()
 	u.rebuildList()
 	u.refreshSummary()
 	return u
@@ -99,6 +105,7 @@ func loadedFrom(t *testing.T, root string) *window {
 	if err := u.loadRelease(idx.Releases[0]); err != nil {
 		t.Fatal(err)
 	}
+	u.rebuildVariants()
 	u.rebuildList()
 	u.refreshSummary()
 	return u
@@ -399,5 +406,56 @@ func TestTakingAFamilyNeverTakesBothSidesOfAConflict(t *testing.T) {
 	// Manifest order decides, so the ordinary package wins over the override.
 	if !u.selected["dialer-google"] {
 		t.Error("the first in manifest order should have won")
+	}
+}
+
+// Picking a variant replaces the selection wholesale.
+func TestVariantPresetsTheSelection(t *testing.T) {
+	u := loaded(t)
+	u.applyVariant("full")
+	u.refreshSummary()
+	for _, id := range []string{"gmscore", "vending", "dialer-google"} {
+		if !u.res.Selected(id) {
+			t.Errorf("full should have taken %s", id)
+		}
+	}
+	// It names both sides of a conflict; the first in manifest order wins.
+	if u.selected["dialer-aosp"] && u.selected["dialer-google"] {
+		t.Error("a variant took both sides of a conflict")
+	}
+	if u.resErr != nil {
+		t.Errorf("a variant should always resolve: %v", u.resErr)
+	}
+
+	u.applyVariant("core")
+	u.refreshSummary()
+	if u.res.Selected("dialer-google") {
+		t.Error("switching to core should have dropped the dialer")
+	}
+}
+
+// The label has to tell the truth: it says Custom once the user edits it, and
+// goes back to naming the preset if they undo the edit.
+func TestVariantLabelFollowsTheSelection(t *testing.T) {
+	u := loaded(t)
+	u.applyVariant("core")
+	u.refreshSummary()
+	if got := u.variant.Selected; !strings.HasPrefix(got, "Core") {
+		t.Errorf("want the Core preset named, got %q", got)
+	}
+	// An edit that lands on a different preset names that preset rather than
+	// giving up and saying Custom.
+	u.rows["dialer-google"].check.OnChanged(true)
+	if got := u.variant.Selected; !strings.HasPrefix(got, "Full") {
+		t.Errorf("want Full, got %q", got)
+	}
+	u.rows["dialer-google"].check.OnChanged(false)
+	if got := u.variant.Selected; !strings.HasPrefix(got, "Core") {
+		t.Errorf("want Core again after undoing, got %q", got)
+	}
+	// An edit that lands on nothing is the user's own.
+	u.rows["dialer-aosp"].check.OnChanged(true)
+	if got := u.variant.Selected; got != customVariant {
+		t.Errorf("want Custom, got %q", got)
 	}
 }
