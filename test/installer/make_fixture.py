@@ -16,7 +16,7 @@ import sys
 import zipfile
 
 PACKAGES = [
-    # id, name, category, path, asset, KiB, extra
+    # id, name, group, path, asset, KiB, extra
     ("gmscore", "Google Play services", "core",
      "product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk", "gmscore.apk", 320,
      {"required": True, "packages": ["com.google.android.gms"],
@@ -48,6 +48,21 @@ PACKAGES = [
     ("pixellauncher", "Pixel Launcher", "pixel",
      "product/priv-app/NexusLauncherRelease/NexusLauncherRelease.apk", "pixellauncher.apk", 30,
      {"requires": ["gmscore"]}),
+]
+
+# The families the picker groups packages under, and the presets it offers.
+GROUPS = [
+    {"id": "core", "name": "Core"},
+    {"id": "setup", "name": "Setup Wizard"},
+    {"id": "apps", "name": "Apps"},
+    {"id": "pixel", "name": "Pixel Specifics"},
+]
+
+VARIANTS = [
+    {"id": "core", "name": "Core", "packages": ["gmscore", "gsf", "vending"]},
+    {"id": "full", "name": "Full",
+     "packages": ["gmscore", "gsf", "vending", "setupwizard", "gsa",
+                  "dialer-google", "photos", "gboard", "pixellauncher"]},
 ]
 
 EXTRA_FILES = [
@@ -96,8 +111,8 @@ def main(root: str) -> int:
                 "mode": "0644", "context": "u:object_r:system_file:s0", "kind": kind}
 
     packages = []
-    for pid, name, category, path, asset, kib, extra in PACKAGES:
-        pkg = {"id": pid, "name": name, "category": category,
+    for pid, name, group, path, asset, kib, extra in PACKAGES:
+        pkg = {"id": pid, "name": name, "group": group,
                "files": [entry(path, asset, kib)]}
         pkg.update(extra)
         packages.append(pkg)
@@ -127,7 +142,8 @@ def main(root: str) -> int:
     }
 
     with open(os.path.join(root, "manifest.json"), "w") as f:
-        json.dump({"schema": 1, "release": release, "packages": packages}, f, indent=2)
+        json.dump({"schema": 1, "release": release, "groups": GROUPS,
+                   "variants": VARIANTS, "packages": packages}, f, indent=2)
 
     with open(os.path.join(root, "index.json"), "w") as f:
         json.dump({

@@ -43,6 +43,12 @@ ZIP="$WORK/gapps.zip"
 GAPPS_CACHE="$WORK/cache" "$BIN" build -source "$FIXTURE" \
   -packages gsa,photos,dialer-google -out "$ZIP" >/dev/null 2>&1
 
+# Read out once rather than piping each check into grep -q: under pipefail a
+# grep that matches and exits early can hand unzip a SIGPIPE, which fails the
+# pipeline even though the entry is there.
+unzip -l "$ZIP" > "$WORK/listing"
+unzip -p "$ZIP" installer/digests.txt > "$WORK/digests"
+
 # A fake ROM: system + product + system_ext, with a matching API level and an
 # AOSP dialer and search box for the removals to find.
 ROM="$WORK/rom"
@@ -88,10 +94,10 @@ check "no scratch file left behind"    '[ -z "$(find "$ROM" -name ".306gapps.par
 check "apk mode is 0644"               '[ "$(stat -c%a "$ROM/product/priv-app/Velvet/Velvet.apk")" = "644" ]'
 check "symlink created, not copied"    '[ -L "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so" ]'
 check "symlink points at its target"   '[ "$(readlink "$ROM/product/priv-app/PrebuiltGmsCore/lib/arm64/libjni.so")" = "/product/lib64/libjni.so" ]'
-check "digests shipped for payloads"   'unzip -p "$ZIP" installer/digests.txt | grep -q "product/priv-app/Velvet/Velvet.apk  "'
+check "digests shipped for payloads"   'grep -q "product/priv-app/Velvet/Velvet.apk  " "$WORK/digests"'
 check "empty file created, size 0"     '[ -f "$ROM/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk.prof" ] && [ ! -s "$ROM/product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk.prof" ]'
-check "no digest line for empty file"  '! unzip -p "$ZIP" installer/digests.txt | grep -q "\.prof"'
-check "no digest line for the symlink" '! unzip -p "$ZIP" installer/digests.txt | grep -q libjni'
+check "no digest line for empty file"  '! grep -q "\.prof" "$WORK/digests"'
+check "no digest line for the symlink" '! grep -q libjni "$WORK/digests"'
 check "corrupt payload is refused"     'corrupt_payload_is_refused'
 
 echo "== rejects a mismatched ROM =="
@@ -115,8 +121,8 @@ else
 fi
 
 echo "== the package is signed =="
-check "MANIFEST.MF present"     'unzip -l "$ZIP" | grep -q "META-INF/MANIFEST.MF"'
-check "signature block present" 'unzip -l "$ZIP" | grep -qE "META-INF/[A-Z0-9]+\.RSA"'
+check "MANIFEST.MF present"     'grep -q "META-INF/MANIFEST.MF" "$WORK/listing"'
+check "signature block present" 'grep -qE "META-INF/[A-Z0-9]+\.RSA" "$WORK/listing"'
 check "openssl verifies it"     '
   d=$(mktemp -d); unzip -q -o "$ZIP" "META-INF/*" -d "$d"
   openssl smime -verify -inform DER -in "$d"/META-INF/*.RSA \
