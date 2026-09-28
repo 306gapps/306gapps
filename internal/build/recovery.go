@@ -84,13 +84,14 @@ func filesList(entries []stage.Entry) []byte {
 		if ctx == "" {
 			ctx = defaultContext(e.Path)
 		}
-		// A fifth field marks a symlink and names its target; records without
-		// it are payloads, so older readers see the same four columns.
+		// path, mode, context, size, package, and for a symlink its target last.
 		if e.IsSymlink() {
-			fmt.Fprintf(&b, "%s\t%04o\t%s\t0\t%s\n", e.Path, e.Mode.Perm(), ctx, e.Target)
+			fmt.Fprintf(&b, "%s\t%04o\t%s\t0\t%s\t%s\n",
+				e.Path, e.Mode.Perm(), ctx, e.Package, e.Target)
 			continue
 		}
-		fmt.Fprintf(&b, "%s\t%04o\t%s\t%d\n", e.Path, e.Mode.Perm(), ctx, e.Size)
+		fmt.Fprintf(&b, "%s\t%04o\t%s\t%d\t%s\n",
+			e.Path, e.Mode.Perm(), ctx, e.Size, e.Package)
 	}
 	return []byte(b.String())
 }

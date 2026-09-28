@@ -25,6 +25,8 @@ type Entry struct {
 	SHA256 string
 	// Target is the link destination for symlink entries, which have no Local.
 	Target string
+	// Package is the display name of the package this file belongs to.
+	Package string
 }
 
 // IsSymlink reports whether this entry is a link rather than a payload.
@@ -111,6 +113,7 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 					entries[i] = Entry{
 						Path: f.Path, Mode: f.FileMode(), Context: f.Context,
 						Kind: f.Kind, Target: f.Target, Size: f.Size,
+						Package: res.Owner[f.Path],
 					}
 					continue
 				}
@@ -125,7 +128,7 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 				entries[i] = Entry{
 					Path: f.Path, Local: local, Mode: f.FileMode(),
 					Context: f.Context, Kind: f.Kind, Size: f.Size,
-					SHA256: f.SHA256,
+					SHA256: f.SHA256, Package: res.Owner[f.Path],
 				}
 			}
 		}()

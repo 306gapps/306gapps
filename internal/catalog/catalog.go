@@ -141,6 +141,8 @@ type Resolution struct {
 	Implied map[string][]string
 	// Files is every file to install, deduplicated and path-sorted.
 	Files []manifest.File
+	// Owner maps a file path to the display name of the package it came from.
+	Owner map[string]string
 	// Size is the total installed size in bytes.
 	Size int64
 }
@@ -246,7 +248,7 @@ func (c *Catalog) Resolve(sel []string) (*Resolution, error) {
 		return nil, err
 	}
 
-	res := &Resolution{Packages: ordered, Implied: implied}
+	res := &Resolution{Packages: ordered, Implied: implied, Owner: map[string]string{}}
 	seen := map[string]bool{}
 	for _, p := range ordered {
 		for _, f := range p.Files {
@@ -254,6 +256,7 @@ func (c *Catalog) Resolve(sel []string) (*Resolution, error) {
 				continue
 			}
 			seen[f.Path] = true
+			res.Owner[f.Path] = p.Name
 			res.Files = append(res.Files, f)
 			res.Size += f.Size
 		}

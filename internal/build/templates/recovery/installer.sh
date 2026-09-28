@@ -168,9 +168,30 @@ ui_print "- installing $TOTAL files"
 HAVE_SHA=0
 command -v sha256sum >/dev/null 2>&1 && HAVE_SHA=1
 
-while IFS="$(printf '\t')" read -r rel mode ctx size link; do
+# Each package is announced the first time one of its files comes up, so the
+# screen says what is being written rather than sitting silent between
+# percentages. files.list is path-sorted and a package's files share a
+# directory, so in practice each name is announced once and stays put.
+#
+# Delimited with tabs rather than spaces: package names contain spaces, and
+# "Google Calendar" would otherwise match inside "Google Calendar Sync".
+# A tab cannot appear in a name -- files.list is tab-separated.
+TAB=$(printf '\t')
+SEEN_PKGS="$TAB"
+
+while IFS="$(printf '\t')" read -r rel mode ctx size owner link; do
   [ -z "$rel" ] && continue
   N=$((N + 1))
+
+  if [ -n "$owner" ]; then
+    case "$SEEN_PKGS" in
+      *"$TAB$owner$TAB"*) ;;
+      *)
+        ui_print "  $owner"
+        SEEN_PKGS="$SEEN_PKGS$owner$TAB"
+        ;;
+    esac
+  fi
   part=${rel%%/*}
   eval "target=\$ROOT_$part"
   dest="$target/${rel#*/}"
@@ -210,12 +231,9 @@ while IFS="$(printf '\t')" read -r rel mode ctx size link; do
   mv -f "$scratch" "$dest" || abort "cannot write $dest"
   set_meta "$dest" "$mode" "$ctx"
 
-  case $((N * 100 / TOTAL)) in
-    25|50|75) ui_print "  $((N * 100 / TOTAL))% ($N/$TOTAL)" ;;
-  esac
 done < "$LIST"
 
-ui_print "  100% ($TOTAL/$TOTAL)"
+ui_print "  $TOTAL files written"
 
 # ---- build properties ------------------------------------------------------
 
@@ -251,7 +269,25 @@ for f in files.list release.txt packages.txt; do
     set_meta "$SYSROOT/etc/306gapps/$f" 0644 "u:object_r:system_file:s0"
 done
 
+# ---- wipe the caches -------------------------------------------------------
+
+# Newly installed apks have to be recompiled, and a stale dalvik cache is the
+# usual cause of a bootloop after flashing gapps. Doing it here is one less
+# step to forget, and it is exactly what the old "wipe cache/dalvik before
+# rebooting" note was asking the user to do by hand.
+ui_print "- wiping dalvik cache"
+for d in /data/dalvik-cache /data/resource-cache /cache/dalvik-cache; do
+  [ -d "$d" ] && rm -rf "${d:?}"/* 2>/dev/null
+done
+if mount_part "$PREFIX/data" 2>/dev/null; then
+  rm -rf "$PREFIX/data/dalvik-cache"/* 2>/dev/null
+  rm -rf "$PREFIX/data/resource-cache"/* 2>/dev/null
+fi
+if mount_part "$PREFIX/cache" 2>/dev/null; then
+  rm -rf "$PREFIX/cache/dalvik-cache"/* 2>/dev/null
+fi
+
 ui_print " "
-ui_print "- done. Wipe cache/dalvik before rebooting."
+ui_print "- done. First boot will take a few minutes while apps recompile."
 cleanup
 exit 0

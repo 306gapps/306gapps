@@ -61,7 +61,7 @@ ui_print "- removing $TOTAL files"
 N=0
 # Only rel is wanted; the rest of the record is read to discard it.
 # shellcheck disable=SC2034
-while IFS="$(printf '\t')" read -r rel mode ctx size link; do
+while IFS="$(printf '\t')" read -r rel mode ctx size owner link; do
   [ -z "$rel" ] && continue
   part=${rel%%/*}
   eval "target=\$ROOT_$part"

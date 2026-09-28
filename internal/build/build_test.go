@@ -2,6 +2,7 @@ package build
 
 import (
 	"archive/zip"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,11 +36,12 @@ func testPlan(t *testing.T) *stage.Plan {
 		Packages: []manifest.Package{{ID: "gmscore", Name: "Play services"}},
 		Entries: []stage.Entry{
 			{Path: "product/priv-app/GmsCore/GmsCore.apk", Local: gms, Mode: 0o644,
-				Context: "u:object_r:system_file:s0", Kind: manifest.KindAPK, Size: 15},
+				Context: "u:object_r:system_file:s0", Kind: manifest.KindAPK, Size: 15,
+				Package: "Play services"},
 			{Path: "product/etc/permissions/gms.xml", Local: perm, Mode: 0o644,
-				Kind: manifest.KindPermission, Size: 14},
+				Kind: manifest.KindPermission, Size: 14, Package: "Play services"},
 			{Path: "system/priv-app/Setup/Setup.apk", Local: gms, Mode: 0o644,
-				Kind: manifest.KindAPK, Size: 15},
+				Kind: manifest.KindAPK, Size: 15, Package: "Setup Wizard"},
 		},
 		Removes: []string{"product/app/QuickSearchBox"},
 		Props:   map[string]string{"ro.com.google.gmsversion": "16_202509"},
@@ -259,7 +261,10 @@ func TestRecoveryRecordsSymlinksInTheWorkList(t *testing.T) {
 			list = string(b)
 		}
 	}
-	want := "product/priv-app/GmsCore/lib/arm64/libjni.so\t0777\tu:object_r:system_file:s0\t0\t/product/lib64/libjni.so"
+	// Columns are path, mode, context, size, owning package, link target. The
+	// owner is what lets the installer name what it is writing; the link
+	// target stays last so the optional field still is.
+	want := "product/priv-app/GmsCore/lib/arm64/libjni.so\t0777\tu:object_r:system_file:s0\t0\t\t/product/lib64/libjni.so"
 	if !strings.Contains(list, want) {
 		t.Errorf("files.list missing the link record:\n%s", list)
 	}
@@ -425,6 +430,51 @@ func TestEmptyFilesGetNoDigestLine(t *testing.T) {
 		rc.Close()
 		if strings.Contains(string(b), ".prof") {
 			t.Errorf("an empty file has no digest to record:\n%s", b)
+		}
+	}
+}
+
+func readZipEntry(t *testing.T, path, name string) string {
+	t.Helper()
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	for _, f := range zr.File {
+		if f.Name != name {
+			continue
+		}
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rc.Close()
+		b, err := io.ReadAll(rc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	t.Fatalf("%s not in %s", name, path)
+	return ""
+}
+
+// The installer names each package as it writes it, which it can only do if
+// files.list says which package every file came from.
+func TestRecoveryFilesListNamesTheOwningPackage(t *testing.T) {
+	out := filepath.Join(t.TempDir(), "r.zip")
+	if _, err := Build(testPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	list := readZipEntry(t, out, "installer/files.list")
+	for _, line := range strings.Split(strings.TrimSpace(list), "\n") {
+		cols := strings.Split(line, "\t")
+		if len(cols) < 5 {
+			t.Fatalf("record has no owner column: %q", line)
+		}
+		if cols[4] == "" {
+			t.Errorf("no owning package for %s", cols[0])
 		}
 	}
 }
