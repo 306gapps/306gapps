@@ -17,8 +17,13 @@ go install github.com/306gapps/306gapps/cmd/306gapps@latest
 
 ## Use
 
+There are two front ends over one core. The manifest, the dependency resolver,
+the payload cache, the builders and the signer are shared, so a package built
+either way is the same bytes.
+
 ```
-306gapps                       # interactive picker
+306gapps-gui                   # desktop picker
+306gapps                       # terminal picker
 306gapps list                  # available releases
 306gapps list 16               # packages in the newest Android 16 release
 306gapps build -target module -packages gsa,photos,gboard
@@ -158,7 +163,8 @@ internal/build      the three output targets
 internal/ota        target-files merge and AOSP signing chain
 internal/build/templates
                     installer shell scripts, embedded into the binary
-internal/tui        interactive picker
+internal/tui        terminal picker
+internal/gui        desktop picker (Fyne, behind the `gui` build tag)
 test/installer      runs the real recovery installer against a fake ROM tree
 test/ota            drives the ota target against a synthetic target-files package
 test/uninstaller    installs then uninstalls, checking nothing of ours survives
@@ -189,6 +195,20 @@ test/uninstaller    installs then uninstalls, checking nothing of ours survives
 - **Symlinks are preserved.** Real dumps link an app's native libraries in from
   the partition's `lib64`; copying the link as a regular file, or dropping it,
   leaves an app that will not start.
+
+## The `gui` build tag
+
+The desktop picker uses Fyne, which needs cgo and the system GL and X headers.
+The command line does not, and that is worth keeping: it cross-compiles to every
+platform from anywhere with `CGO_ENABLED=0` and ships as one static binary. So
+the picker sits behind a build tag, and a default `go build ./...` never reaches
+it.
+
+```
+go build -tags gui ./cmd/306gapps-gui
+```
+
+On Debian or Ubuntu that needs `libgl1-mesa-dev` and `xorg-dev`.
 
 ## Testing
 
