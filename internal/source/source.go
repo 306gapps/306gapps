@@ -224,15 +224,26 @@ func (s *Source) Fetch(ctx context.Context, m *manifest.Manifest, f manifest.Fil
 	defer rc.Close()
 
 	if total <= 0 {
-		total = f.Size
+		// Bytes on the wire, which is the compressed size when there is one.
+		total = f.Download()
 	}
 	var r io.Reader = rc
 	if p != nil {
 		r = &progressReader{r: rc, total: total, file: f, cb: p}
 	}
+	r, check, err := decode(r, f)
+	if err != nil {
+		return "", err
+	}
+	// Put verifies the decoded bytes, which are the ones that get installed.
 	path, err := s.Cache.Put(f.SHA256, r)
 	if err != nil {
 		return "", fmt.Errorf("cache %s: %w", f.Path, err)
+	}
+	if err := check(); err != nil {
+		// The file is wrong however it got that way; do not leave it cached.
+		s.Cache.Evict(f.SHA256)
+		return "", err
 	}
 	return path, nil
 }

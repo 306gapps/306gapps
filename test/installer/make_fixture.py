@@ -8,6 +8,8 @@ digests, and random bytes would be rejected exactly as a corrupt dump is.
 """
 
 import hashlib
+import shutil
+import gzip
 import io
 import json
 import os
@@ -91,8 +93,14 @@ def main(root: str) -> int:
     os.makedirs(assets, exist_ok=True)
     rng = random.Random(42)
 
-    def blob(name: str, kib: int) -> tuple[str, int]:
-        filler = bytes(rng.getrandbits(8) for _ in range(kib * 1024))
+    def blob(name: str, kib: int, compressible: bool = True) -> tuple[str, int]:
+        if compressible:
+            # Real apks are full of deliberately uncompressed regions --
+            # resources.arsc, unextracted native libraries -- so a payload
+            # that gzips well is the normal case, not the exception.
+            filler = (b"resources.arsc padding " * 64)[:1024] * kib
+        else:
+            filler = bytes(rng.getrandbits(8) for _ in range(kib * 1024))
         if name.endswith((".apk", ".apex", ".jar")):
             buf = io.BytesIO()
             with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as z:
@@ -105,10 +113,29 @@ def main(root: str) -> int:
             f.write(data)
         return hashlib.sha256(data).hexdigest(), len(data)
 
-    def entry(path, asset, kib, kind="apk"):
-        digest, size = blob(asset, kib)
-        return {"path": path, "asset": asset, "sha256": digest, "size": size,
-                "mode": "0644", "context": "u:object_r:system_file:s0", "kind": kind}
+    def entry(path, asset, kib, kind="apk", compressible=True):
+        digest, size = blob(asset, kib, compressible)
+        e = {"path": path, "asset": asset, "sha256": digest, "size": size,
+             "mode": "0644", "context": "u:object_r:system_file:s0", "kind": kind}
+
+        # Publish compressed when it actually saves something, exactly as the
+        # real dumper does, so the fixture exercises both paths.
+        plain = os.path.join(assets, asset)
+        packed = plain + ".gz"
+        with open(plain, "rb") as fin, open(packed, "wb") as raw:
+            with gzip.GzipFile(fileobj=raw, mode="wb", compresslevel=6, mtime=0) as fout:
+                shutil.copyfileobj(fin, fout)
+        pn = os.path.getsize(packed)
+        if pn < size * 0.95:
+            with open(packed, "rb") as f:
+                e["asset"] = asset + ".gz"
+                e["encoding"] = "gzip"
+                e["asset_sha256"] = hashlib.sha256(f.read()).hexdigest()
+                e["asset_size"] = pn
+            os.remove(plain)
+        else:
+            os.remove(packed)
+        return e
 
     packages = []
     for pid, name, group, path, asset, kib, extra in PACKAGES:

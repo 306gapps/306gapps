@@ -82,8 +82,17 @@ echo "== assertions =="
 check "gapps installed to /product"    '[ -s "$ROM/product/priv-app/Velvet/Velvet.apk" ]'
 check "gapps installed to /system_ext" '[ -s "$ROM/system_ext/priv-app/GoogleDialer/GoogleDialer.apk" ]'
 check "permissions xml installed"      '[ -s "$ROM/product/etc/permissions/privapp-permissions-google-p.xml" ]'
-check "payload size matches source"    '[ "$(stat -c%s "$ROM/product/priv-app/Velvet/Velvet.apk")" = "$(stat -c%s "$FIXTURE/assets/gsa.apk")" ]'
-check "payload bytes match source"     'cmp -s "$ROM/product/priv-app/Velvet/Velvet.apk" "$FIXTURE/assets/gsa.apk"'
+# Payloads are published compressed when that saves anything, so the source
+# to compare against is whatever the asset decodes to. Comparing the
+# installed bytes with it is also what proves the round trip is lossless.
+SRC="$WORK/gsa-source.apk"
+if [ -f "$FIXTURE/assets/gsa.apk.gz" ]; then
+  gzip -dc "$FIXTURE/assets/gsa.apk.gz" > "$SRC"
+else
+  cp "$FIXTURE/assets/gsa.apk" "$SRC"
+fi
+check "payload size matches source"    '[ "$(stat -c%s "$ROM/product/priv-app/Velvet/Velvet.apk")" = "$(stat -c%s "$SRC")" ]'
+check "payload bytes match source"     'cmp -s "$ROM/product/priv-app/Velvet/Velvet.apk" "$SRC"'
 check "superseded QuickSearchBox gone" '[ ! -e "$ROM/product/app/QuickSearchBox" ]'
 check "superseded AOSP Dialer gone"    '[ ! -e "$ROM/system_ext/priv-app/Dialer" ]'
 check "build.prop got gms version"     'grep -q "^ro.com.google.gmsversion=16_202509$" "$ROM/system/system/build.prop"'

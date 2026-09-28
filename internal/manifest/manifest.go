@@ -77,6 +77,9 @@ type Source struct {
 	SHA256 string `json:"sha256"`
 }
 
+// EncodingGzip is the only transport encoding we publish: no third-party package needed to read it.
+const EncodingGzip = "gzip"
+
 type Package struct {
 	ID      string `json:"id"`
 	Name    string `json:"name"`
@@ -135,8 +138,26 @@ type File struct {
 	Stub bool `json:"stub,omitempty"`
 	// Kanged marks a payload taken from elsewhere rather than this release's dump, so a new build never refreshes it.
 	Kanged bool `json:"kanged,omitempty"`
+	// Encoding names how the asset is compressed for transport, empty meaning it is
+	// not. Unrelated to a path ending in .gz: some apks install compressed.
+	Encoding string `json:"encoding,omitempty"`
+	// AssetSHA256 and AssetSize describe the artifact as downloaded; SHA256 and Size
+	// always describe the file that lands on the device.
+	AssetSHA256 string `json:"asset_sha256,omitempty"`
+	AssetSize   int64  `json:"asset_size,omitempty"`
 	// Synthetic marks a payload this project generates rather than extracts.
 	Synthetic bool `json:"synthetic,omitempty"`
+}
+
+// Compressed reports whether the asset must be decoded after downloading.
+func (f File) Compressed() bool { return f.Encoding != "" }
+
+// Download returns the number of bytes actually fetched for this file.
+func (f File) Download() int64 {
+	if f.Compressed() {
+		return f.AssetSize
+	}
+	return f.Size
 }
 
 // IsSymlink reports whether this entry is a link rather than a payload.
@@ -279,6 +300,24 @@ func (m *Manifest) Validate() error {
 		seen[p.ID] = true
 		if p.Name == "" {
 			add("%s: name is empty", where)
+		}
+		for _, f := range p.Files {
+			switch f.Encoding {
+			case "":
+				if f.AssetSHA256 != "" || f.AssetSize != 0 {
+					add("%s: %s describes a compressed artifact but names no encoding",
+						where, f.Path)
+				}
+			case EncodingGzip:
+				if len(f.AssetSHA256) != 64 {
+					add("%s: %s is %s but has no artifact digest", where, f.Path, f.Encoding)
+				}
+				if f.AssetSize <= 0 {
+					add("%s: %s is %s but has no artifact size", where, f.Path, f.Encoding)
+				}
+			default:
+				add("%s: %s has unknown encoding %q", where, f.Path, f.Encoding)
+			}
 		}
 		if p.Group == "" {
 			add("%s: group is empty", where)

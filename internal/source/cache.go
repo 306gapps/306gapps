@@ -91,6 +91,11 @@ func (c *Cache) Put(digest string, r io.Reader) (string, error) {
 	return final, nil
 }
 
+// Evict removes a blob that failed a later check.
+func (c *Cache) Evict(digest string) {
+	os.Remove(c.path(digest))
+}
+
 // Verify rehashes a stored blob and evicts it if it no longer matches.
 func (c *Cache) Verify(digest string) error {
 	p := c.path(digest)
