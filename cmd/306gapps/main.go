@@ -140,6 +140,9 @@ func cmdPick(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(*out, 0o755); err != nil {
 		return err
 	}
@@ -153,12 +156,18 @@ func cmdList(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
 	s := newSource(*src, *cache)
 	idx, err := s.Index(ctx)
 	if err != nil {
 		return err
 	}
 
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
 	if fs.NArg() == 0 {
 		if *asJSON {
 			return json.NewEncoder(os.Stdout).Encode(idx.Releases)
@@ -192,7 +201,7 @@ func cmdList(ctx context.Context, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "ID\tCATEGORY\tSIZE\tFLAGS\tNAME")
+	fmt.Fprintln(w, "ID\tFAMILY\tSIZE\tFLAGS\tNAME")
 	for _, p := range m.Packages {
 		var flags []string
 		if p.Required {
@@ -211,6 +220,18 @@ func cmdList(ctx context.Context, args []string) error {
 			p.ID, p.Group, human(p.Size()), strings.Join(flags, ","), p.Name)
 	}
 	return w.Flush()
+}
+
+// checkTrailingFlags rejects a flag written after a positional argument, which
+// flag.Parse stops at and silently ignores.
+func checkTrailingFlags(fs *flag.FlagSet) error {
+	for _, a := range fs.Args() {
+		if strings.HasPrefix(a, "-") && a != "-" {
+			return fmt.Errorf("%s must come before %s; flags after an argument are not parsed",
+				a, fs.Arg(0))
+		}
+	}
+	return nil
 }
 
 func cmdBuild(ctx context.Context, args []string) error {
@@ -234,6 +255,9 @@ func cmdBuild(ctx context.Context, args []string) error {
 	keyPath := fs.String("key", "", "signing key (PEM); default: a generated one")
 	certPath := fs.String("cert", "", "signing certificate (PEM)")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := checkTrailingFlags(fs); err != nil {
 		return err
 	}
 
@@ -443,6 +467,9 @@ func cmdUninstaller(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if err := checkTrailingFlags(fs); err != nil {
+		return err
+	}
 
 	// No payload here, so the source is consulted only for busybox; missing is fine.
 	busybox := ""
@@ -484,6 +511,9 @@ func cmdCache(args []string) error {
 	fs := flag.NewFlagSet("cache", flag.ContinueOnError)
 	dir := fs.String("cache", envOr("GAPPS_CACHE", ""), "download cache directory")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := checkTrailingFlags(fs); err != nil {
 		return err
 	}
 	c := source.NewCache(*dir)

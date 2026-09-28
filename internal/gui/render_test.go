@@ -19,9 +19,21 @@ func TestRenderSnapshot(t *testing.T) {
 		t.Skip("set GUI_SNAPSHOT to write a snapshot")
 	}
 	u := loaded(t)
-	// Tick something with a dependency and something that conflicts, so the
-	// snapshot shows the states that matter rather than only the idle one.
-	u.selected["dialer-google"] = true
+	// GUI_SNAPSHOT_SOURCE points the snapshot at a real release instead of the
+	// fixture, which is the only way to see how the layout holds at the real
+	// package count.
+	pick := "dialer-google"
+	if root := os.Getenv("GUI_SNAPSHOT_SOURCE"); root != "" {
+		u = loadedFrom(t, root)
+		pick = "chrome"
+	}
+	// Tick something that pulls a dependency in, so the snapshot shows the
+	// states that matter rather than only the idle one.
+	u.selected[pick] = true
+	if f := os.Getenv("GUI_SNAPSHOT_FILTER"); f != "" {
+		u.filter.SetText(f)
+		u.rebuildList()
+	}
 	u.resolve()
 	u.refreshSummary()
 	u.win.Resize(fyne.NewSize(940, 760))

@@ -84,6 +84,26 @@ func loaded(t *testing.T) *window {
 	return u
 }
 
+// loadedFrom opens a real assets tree, for snapshots at the true package count.
+func loadedFrom(t *testing.T, root string) *window {
+	t.Helper()
+	test.NewApp()
+	src := source.New(root, source.NewCache(t.TempDir()))
+	idx, err := src.Index(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newState(context.Background(), src, t.TempDir())
+	u := &window{state: s, win: test.NewWindow(nil)}
+	u.win.SetContent(u.build())
+	if err := u.loadRelease(idx.Releases[0]); err != nil {
+		t.Fatal(err)
+	}
+	u.rebuildList()
+	u.refreshSummary()
+	return u
+}
+
 func TestDefaultsAreSelectedOnLoad(t *testing.T) {
 	u := loaded(t)
 	if !u.selected["vending"] {
