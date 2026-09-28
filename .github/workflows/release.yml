@@ -41,7 +41,6 @@ jobs:
   # pure Go and build anywhere.
   native:
     needs: version
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
@@ -141,7 +140,7 @@ jobs:
           [ "$got" = "306gapps $V" ] || { echo "::error::version mismatch: $got"; exit 1; }
 
       - name: Checksums
-        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+        run: cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
 
       - uses: actions/upload-artifact@v4
         with:

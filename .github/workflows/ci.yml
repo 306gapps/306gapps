@@ -36,11 +36,24 @@ jobs:
           done
           exit $fail
 
+      # GitHub refuses a workflow with a duplicate key, and the only symptom
+      # is the file losing its name and becoming undispatchable. PyYAML and
+      # actionlint both accept it, so this is checked on its own.
+      - name: Workflows parse strictly
+        run: |
+          pip install --quiet pyyaml
+          python3 tools/lint-workflows.py .github/workflows/*.yml
+
+      - name: actionlint
+        uses: docker://rhysd/actionlint:latest
+        with:
+          args: -color
+
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck -s sh -S warning \
-            $(git ls-files 'internal/build/templates/*' | grep -v NOTICE)
+          git ls-files 'internal/build/templates/*' | grep -v NOTICE \
+            | xargs shellcheck -s sh -S warning
 
   installer:
     runs-on: ubuntu-latest
