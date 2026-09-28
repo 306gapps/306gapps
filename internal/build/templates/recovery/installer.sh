@@ -77,12 +77,21 @@ for part in $PARTS; do
   case "$part" in
     system) target="$SYSROOT" ;;
     *)
-      # /product and /system_ext are often symlinks into /system on older ROMs.
-      if [ -d "$SYSROOT/$part" ] && ! grep -q " /$part " /proc/mounts 2>/dev/null; then
+      # Take the real partition whenever the device has one. On anything
+      # modern /product and /system_ext are separate dynamic partitions, and
+      # /system/system/product is a symlink to their mount point -- which in
+      # recovery is an empty directory on the ramdisk. Testing that path with
+      # -d succeeds, so preferring it measured the ramdisk (0 bytes free) and
+      # would have written the payload into RAM.
+      #
+      # Only fall back to a directory inside /system when it is genuinely
+      # populated, which is what an older single-partition ROM looks like.
+      if mount_part "$PREFIX/$part"; then
+        target="$PREFIX/$part"
+      elif [ -d "$SYSROOT/$part" ] && [ -n "$(ls -A "$SYSROOT/$part" 2>/dev/null)" ]; then
         target="$SYSROOT/$part"
       else
-        mount_part "$PREFIX/$part" || abort "cannot mount /$part"
-        target="$PREFIX/$part"
+        abort "cannot mount /$part"
       fi
       ;;
   esac

@@ -145,7 +145,15 @@ mount_part() {
 
 # Free bytes on the filesystem holding $1.
 free_bytes() {
-  df -k "$1" 2>/dev/null | tail -n1 | awk '{print $4 * 1024}'
+  # $(NF-2) rather than $4: busybox df puts a long device name on a line of
+  # its own and wraps the columns onto the next, after which the available
+  # column is the third field, not the fourth. Counting back from the end is
+  # right either way -- the last three fields are always available, use% and
+  # mount point.
+  #
+  # Reading $4 off a wrapped line picks up the use percentage instead, which
+  # on a real device reported 22 KB free for a partition with 2.4 GiB.
+  df -k "$1" 2>/dev/null | tail -n1 | awk '{print $(NF-2) * 1024}'
 }
 
 # Grow a logical partition by <bytes> when the ROM left no slack.

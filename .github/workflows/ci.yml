@@ -85,6 +85,11 @@ jobs:
       - name: Install then uninstall, and check nothing of ours survives
         run: ./test/uninstaller/run.sh /tmp/306gapps /tmp/fixture
 
+      # The installer harness stubs the device-touching helpers, so the real
+      # ones need exercising separately against captured device output.
+      - name: Recovery helpers
+        run: ./test/util/run.sh
+
   # The desktop picker is behind a build tag so the command line stays pure Go
   # and cross-compiles without a toolchain. That means it needs its own job, or
   # it would rot unbuilt.
