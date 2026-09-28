@@ -32,6 +32,8 @@ type Release struct {
 	Created time.Time `json:"created"`
 	// AssetBase is the URL prefix every File.Asset is resolved against.
 	AssetBase string `json:"asset_base"`
+	// Definitions is the digest of the package definitions this release was built from.
+	Definitions string `json:"definitions,omitempty"`
 	// Arch is the device architecture the payloads target; empty means arm64.
 	Arch string `json:"arch,omitempty"`
 }
@@ -80,6 +82,8 @@ type Package struct {
 	Files []File `json:"files"`
 	// Props are appended to the target's build properties.
 	Props map[string]string `json:"props,omitempty"`
+	// Version records the principal apk's version.
+	Version map[string]string `json:"version,omitempty"`
 }
 
 // Kind classifies a file for the installer and the addon.d survival script.
@@ -109,9 +113,11 @@ type File struct {
 	Kind    Kind   `json:"kind"`
 	// Target is the link destination, set only when Kind is KindSymlink.
 	Target string `json:"target,omitempty"`
-	// Carried marks a payload that did not come from the dump this release was
-	// made from, and so cannot be refreshed when the device gets a new build.
-	Carried bool `json:"carried,omitempty"`
+	// Stub marks a placeholder apk Google ships beside the real one. Installing one
+	// without its counterpart leaves an app entry that cannot start.
+	Stub bool `json:"stub,omitempty"`
+	// Kanged marks a payload taken from elsewhere rather than this release's dump, so a new build never refreshes it.
+	Kanged bool `json:"kanged,omitempty"`
 }
 
 // IsSymlink reports whether this entry is a link rather than a payload.
