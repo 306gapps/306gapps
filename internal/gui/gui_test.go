@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/test"
 
 	"github.com/306gapps/306gapps/internal/build"
+	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/source"
 )
@@ -594,5 +595,103 @@ func TestOutputChooserSetsTheDestination(t *testing.T) {
 	}
 	if err := writableDir(u.outDir); err != nil {
 		t.Errorf("a chosen folder should be usable: %v", err)
+	}
+}
+
+// A long summary is truncated to keep rows to one line. Clicking the row has
+// to be the way to read the rest, or the text is simply unreachable.
+func TestClickingARowRevealsTheWholeSummary(t *testing.T) {
+	u := loaded(t)
+	row := u.rows["vending"]
+	if row.detail == nil {
+		t.Fatal("no detail label on the row")
+	}
+	if row.detail.Visible() {
+		t.Error("the detail should start hidden")
+	}
+	if row.detail.Text != row.pkg.Summary {
+		t.Errorf("the detail should hold the whole summary, got %q", row.detail.Text)
+	}
+	row.detail.Show()
+	if !row.detail.Visible() {
+		t.Error("the detail should be showable")
+	}
+}
+
+// Expert mode is off by default and its controls stay out of the way.
+func TestExpertModeIsOffAndHidesItsControls(t *testing.T) {
+	u := loaded(t)
+	if u.state.expert {
+		t.Error("expert mode should start off")
+	}
+	if u.expertBar.Visible() {
+		t.Error("the expert bar should be hidden")
+	}
+	u.expertBox.SetChecked(true)
+	if !u.state.expert || !u.expertBar.Visible() {
+		t.Error("turning expert on should reveal its controls")
+	}
+	u.expertBox.SetChecked(false)
+	if u.expertBar.Visible() {
+		t.Error("turning it off should hide them again")
+	}
+}
+
+// Keeping the ROM's own app is only offered for packages that would remove it.
+func TestKeepStockAppliesOnlyToWhatWasTicked(t *testing.T) {
+	u := loaded(t)
+	u.expertBox.SetChecked(true)
+	u.rows["dialer-google"].check.OnChanged(true)
+	u.state.keepStock["dialer-google"] = true
+	u.resolve()
+	got := u.keepStockIDs()
+	if len(got) != 1 || got[0] != "dialer-google" {
+		t.Errorf("want dialer-google kept, got %v", got)
+	}
+	// A package that is not in the resolution must not leak into the build.
+	u.state.keepStock["not-installed"] = true
+	if got := u.keepStockIDs(); len(got) != 1 {
+		t.Errorf("only installed packages should be listed, got %v", got)
+	}
+}
+
+// A saved selection round-trips through the picker.
+func TestSavedSelectionAppearsAndApplies(t *testing.T) {
+	u := loaded(t)
+	u.state.configs = &config.Store{Dir: t.TempDir()}
+	if err := u.configs.Save(config.Config{
+		Name: "Mine", Packages: []string{"gmscore", "dialer-google"},
+		KeepStock: []string{"dialer-google"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	u.rebuildVariants()
+
+	label := savedPrefix + "Mine"
+	found := false
+	for _, o := range u.variant.Options {
+		if o == label {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("a saved selection should be listed, got %v", u.variant.Options)
+	}
+
+	u.variant.SetSelected(label)
+	if !u.res.Selected("dialer-google") {
+		t.Error("choosing it should apply its packages")
+	}
+	if !u.state.keepStock["dialer-google"] {
+		t.Error("choosing it should apply its keep-stock list")
+	}
+	if u.variant.Selected != label {
+		t.Errorf("it should keep its own name, got %q", u.variant.Selected)
+	}
+
+	// Editing it makes the selection the user's own again.
+	u.rows["dialer-aosp"].check.OnChanged(true)
+	if u.variant.Selected == label {
+		t.Error("an edit should stop claiming to be the saved selection")
 	}
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/catalog"
+	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/source"
 )
@@ -31,6 +32,15 @@ type state struct {
 
 	target build.Target
 
+	// expert reveals the controls most people should not need.
+	expert bool
+	// keepStock names packages whose removals are skipped.
+	keepStock map[string]bool
+	// configs holds the user's own saved selections.
+	configs *config.Store
+	// keptLabel is the saved selection currently showing, if any.
+	keptLabel string
+
 	// The ota target needs the ROM and its signing keys; neither can be inferred.
 	otaBase  string
 	otaKeys  string
@@ -45,8 +55,10 @@ type state struct {
 func newState(ctx context.Context, src *source.Source, outDir string) *state {
 	return &state{
 		ctx: ctx, src: src, outDir: outDir,
-		selected: map[string]bool{},
-		target:   build.TargetRecovery,
+		keepStock: map[string]bool{},
+		configs:   config.New(),
+		selected:  map[string]bool{},
+		target:    build.TargetRecovery,
 	}
 }
 
@@ -140,6 +152,10 @@ func (s *state) matchingVariant() string {
 	if s.cat == nil || s.res == nil {
 		return ""
 	}
+	// A saved selection keeps its own label even when it equals a preset.
+	if s.keptLabel != "" {
+		return ""
+	}
 	have := map[string]bool{}
 	for _, p := range s.res.Packages {
 		have[p.ID] = true
@@ -177,6 +193,24 @@ func sameSet(r *catalog.Resolution, have map[string]bool) bool {
 	}
 	return true
 }
+
+// keepStockIDs returns packages whose removals are skipped, limited to ones being installed.
+func (s *state) keepStockIDs() []string {
+	var out []string
+	if s.res == nil {
+		return nil
+	}
+	for _, p := range s.res.Packages {
+		if s.keepStock[p.ID] {
+			out = append(out, p.ID)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// replaces reports whether a package removes anything, the only case where keep-stock means something.
+func replaces(p manifest.Package) bool { return len(p.Removes) > 0 }
 
 func (s *state) groups() []manifest.Group {
 	if s.cat == nil {

@@ -15,6 +15,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 
 	"github.com/306gapps/306gapps/internal/build"
+	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/version"
@@ -51,11 +52,17 @@ type window struct {
 	warning    *widget.Label
 	target     *widget.Select
 	ota        *otaForm
+	expertBox  *widget.Check
+	expertBar  *fyne.Container
+	importBtn  *widget.Button
+	exportBtn  *widget.Button
 	outEntry   *widget.Entry
 	buildBtn   *widget.Button
 	status     *widget.Label
 
 	variantIDs map[string]string
+	// savedByLabel maps a dropdown entry to the user's own saved selection.
+	savedByLabel map[string]config.Config
 	// applyingVariant suppresses the select's callback while the label is synced,
 	// which would otherwise re-apply the preset and undo the change.
 	applyingVariant bool
@@ -77,7 +84,9 @@ type groupRow struct {
 type packageRow struct {
 	check *widget.Check
 	note  *widget.Label
-	pkg   manifest.Package
+	// detail holds the whole summary and is shown when the row is clicked.
+	detail *widget.Label
+	pkg    manifest.Package
 }
 
 func (u *window) build() fyne.CanvasObject {
@@ -121,6 +130,14 @@ func (u *window) build() fyne.CanvasObject {
 		if u.applyingVariant {
 			return
 		}
+		if c, ok := u.savedByLabel[label]; ok {
+			u.state.keptLabel = label
+			u.applyConfig(c)
+			u.rebuildList()
+			u.refreshSummary()
+			return
+		}
+		u.state.keptLabel = ""
 		id, ok := u.variantIDs[label]
 		if !ok {
 			return
@@ -138,12 +155,28 @@ func (u *window) build() fyne.CanvasObject {
 		u.filter.SetText("")
 	})
 
+	u.expertBox = widget.NewCheck("Expert", func(on bool) {
+		u.state.expert = on
+		u.rebuildList()
+		u.refreshExpert()
+		u.refreshSummary()
+	})
+
+	u.importBtn = widget.NewButton("Import…", u.onImport)
+	u.exportBtn = widget.NewButton("Export…", u.onExport)
+
+	u.expertBar = container.NewHBox(
+		widget.NewLabel("Saved selections:"), u.importBtn, u.exportBtn)
+	u.expertBar.Hide()
+
 	u.list = container.NewVBox()
 
 	top := container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("Release"), nil, u.releases),
 		container.NewBorder(nil, nil, widget.NewLabel("Variant"), nil, u.variant),
-		container.NewBorder(nil, nil, widget.NewLabel("Filter"), clear, u.filter),
+		container.NewBorder(nil, nil, widget.NewLabel("Filter"),
+			container.NewHBox(clear, u.expertBox), u.filter),
+		u.expertBar,
 		widget.NewSeparator(),
 	)
 	u.ota = u.buildOTAForm()
@@ -228,11 +261,20 @@ const customVariant = "Custom"
 
 func (u *window) rebuildVariants() {
 	u.variantIDs = map[string]string{}
+	u.savedByLabel = map[string]config.Config{}
 	labels := []string{customVariant}
 	for _, v := range u.variants() {
 		label := fmt.Sprintf("%s — %d packages", v.Name, len(u.cat.Prune(v.Packages)))
 		u.variantIDs[label] = v.ID
 		labels = append(labels, label)
+	}
+	saved, err := u.configs.List()
+	if err == nil {
+		for _, c := range saved {
+			label := savedPrefix + c.Name
+			u.savedByLabel[label] = c
+			labels = append(labels, label)
+		}
 	}
 	u.variant.Options = labels
 	u.variant.Refresh()
@@ -244,7 +286,9 @@ func (u *window) refreshVariant() {
 		return
 	}
 	want := customVariant
-	if id := u.matchingVariant(); id != "" {
+	if u.state.keptLabel != "" {
+		want = u.state.keptLabel
+	} else if id := u.matchingVariant(); id != "" {
 		for label, vid := range u.variantIDs {
 			if vid == id {
 				want = label
@@ -353,6 +397,7 @@ func (u *window) groupHeader(g manifest.Group, members []manifest.Package) fyne.
 
 func (u *window) groupToggle(members []manifest.Package) func(bool) {
 	return func(on bool) {
+		u.state.keptLabel = ""
 		taken := map[string]bool{}
 		for _, p := range members {
 			if p.Required {
@@ -417,6 +462,7 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 			return
 		}
 		u.selected[p.ID] = on
+		u.state.keptLabel = ""
 		// A conflict is a choice, not an error: taking one drops the other.
 		if on {
 			for _, other := range u.cat.ConflictsWith(p.ID) {
@@ -439,10 +485,38 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	note.Truncation = fyne.TextTruncateEllipsis
 	note.Importance = widget.LowImportance
 
-	u.rows[p.ID] = &packageRow{check: check, note: note, pkg: p}
+	// Full text lives in a second line that starts hidden; clicking the name unfolds it.
+	detail := widget.NewLabel(p.Summary)
+	detail.Wrapping = fyne.TextWrapWord
+	detail.Importance = widget.LowImportance
+	detail.Hide()
 
-	return container.NewBorder(nil, nil,
-		container.NewHBox(check, name, id), size, note)
+	// Expert-only: keeping both the ROM's app and ours is rarely what anyone wants.
+	var trailing fyne.CanvasObject = size
+	if u.state.expert && replaces(p) {
+		keep := widget.NewCheck("keep ROM app", func(on bool) {
+			u.state.keepStock[p.ID] = on
+			u.refreshSummary()
+		})
+		keep.SetChecked(u.state.keepStock[p.ID])
+		trailing = container.NewHBox(keep, size)
+	}
+
+	line := container.NewBorder(nil, nil,
+		container.NewHBox(check, newTappable(name, func() {
+			if p.Summary == "" {
+				return
+			}
+			if detail.Visible() {
+				detail.Hide()
+			} else {
+				detail.Show()
+			}
+		}), id), trailing, note)
+
+	u.rows[p.ID] = &packageRow{check: check, note: note, detail: detail, pkg: p}
+
+	return container.NewVBox(line, indent(detail))
 }
 
 // refreshRows brings every line back in line with the resolution.
@@ -476,6 +550,18 @@ func (u *window) refreshRows() {
 			note = row.pkg.Summary
 		}
 		row.note.SetText(note)
+	}
+}
+
+// refreshExpert shows the expert-only controls.
+func (u *window) refreshExpert() {
+	if u.expertBar == nil {
+		return
+	}
+	if u.state.expert {
+		u.expertBar.Show()
+	} else {
+		u.expertBar.Hide()
 	}
 }
 

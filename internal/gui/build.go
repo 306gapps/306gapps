@@ -43,9 +43,16 @@ func (u *window) onBuild() {
 				dialog.ShowError(err, u.win)
 				return
 			}
-			dialog.ShowInformation("Done", fmt.Sprintf(
+			// Chained, not concurrent: two dialogs at once stack on each other.
+			done := dialog.NewInformation("Done", fmt.Sprintf(
 				"%s\n\n%s · %d entries\nsha256 %s",
 				result.Path, humanSize(result.Size), result.Files, result.SHA256), u.win)
+			done.SetOnClosed(func() {
+				if u.state.keptLabel == "" {
+					u.askToSave()
+				}
+			})
+			done.Show()
 			u.status.SetText("wrote " + filepath.Base(result.Path))
 		})
 	}()
@@ -61,7 +68,8 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 	seen := map[string]bool{}
 
 	plan, err := stage.Build(u.ctx, u.src, m, u.res, stage.Options{
-		Workers: 4,
+		KeepStock: u.keepStockIDs(),
+		Workers:   4,
 		Progress: func(f manifest.File, got, want int64) {
 			if got < want || seen[f.Path] {
 				return
