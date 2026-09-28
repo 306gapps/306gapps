@@ -18,6 +18,31 @@ abort() {
 rm -rf "$TMP"
 mkdir -p "$TMP" || abort "cannot create $TMP"
 
+# Everything the installer writes to stderr goes to a file, and the file is
+# put on screen if we exit non-zero.
+#
+# Without this a shell error -- an unsupported construct, a missing applet, a
+# bad substitution -- kills the script silently and recovery reports nothing
+# but "status 1", which says where it stopped and nothing about why.
+ERRLOG="$TMP/stderr.log"
+: > "$ERRLOG"
+exec 2>>"$ERRLOG"
+
+show_errors() {
+  rc=$?
+  if [ "$rc" -ne 0 ] && [ -s "$ERRLOG" ]; then
+    ui_print " "
+    ui_print "! the installer stopped unexpectedly:"
+    while IFS= read -r line; do
+      [ -n "$line" ] && ui_print "  $line"
+    done < "$ERRLOG"
+  fi
+  # Kept outside $TMP, which is about to be removed, so it survives for adb.
+  [ -s "$ERRLOG" ] && cat "$ERRLOG" > /tmp/306gapps-error.log 2>/dev/null
+  return "$rc"
+}
+trap show_errors EXIT
+
 # Only the installer payload is unpacked up front; file payloads are streamed
 # out of the zip one at a time so we never need room for two copies.
 unzip -o "$ZIPFILE" 'installer/*' -d "$TMP" >/dev/null 2>&1 || abort "failed to unpack installer"
