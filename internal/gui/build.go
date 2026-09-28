@@ -21,16 +21,6 @@ func (u *window) onBuild() {
 	if u.res == nil || u.resErr != nil {
 		return
 	}
-	if u.state.target == build.TargetOTA {
-		// The ota target needs a target-files package and signing keys, which
-		// is a conversation this window is not the place for.
-		dialog.ShowInformation("Not available here",
-			"The sideloadable package needs your ROM's target-files and signing "+
-				"keys.\n\nBuild it from the command line:\n\n"+
-				"  306gapps build -target ota -ota-base … -ota-keys …", u.win)
-		return
-	}
-
 	bar := widget.NewProgressBar()
 	status := widget.NewLabel("Starting…")
 	d := dialog.NewCustomWithoutButtons("Building",
@@ -103,8 +93,8 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 
 	out := filepath.Join(u.outDir, fmt.Sprintf("306gapps-%s-%s.zip",
 		plan.Release.ID, u.state.target))
-	report("Packing…", 0.7)
-	result, err := build.Build(plan, build.Options{
+
+	opts := build.Options{
 		Target:  u.state.target,
 		Out:     out,
 		Busybox: busybox,
@@ -112,9 +102,25 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 			report(fmt.Sprintf("Packing… %d/%d", n, of),
 				0.7+float64(n)/float64(max(of, 1))*0.25)
 		},
-	})
+	}
+	if u.state.target == build.TargetOTA {
+		s, err := u.signingOptions(report)
+		if err != nil {
+			return nil, err
+		}
+		opts.Signing = s
+	}
+
+	report("Packing…", 0.7)
+	result, err := build.Build(plan, opts)
 	if err != nil {
 		return nil, err
+	}
+
+	// An ota is already signed with the ROM's keys; signing again with ours breaks it.
+	if u.state.target == build.TargetOTA {
+		report("Done", 1)
+		return restat(result)
 	}
 
 	report("Signing…", 0.97)

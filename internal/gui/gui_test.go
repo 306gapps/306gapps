@@ -459,3 +459,97 @@ func TestVariantLabelFollowsTheSelection(t *testing.T) {
 		t.Errorf("want Custom, got %q", got)
 	}
 }
+
+// The ota inputs are only meaningful for the ota target, and Build must not
+// be clickable until the one that cannot be inferred has been chosen.
+func TestOTAFormAppearsWithTheTarget(t *testing.T) {
+	u := loaded(t)
+	if u.ota.panel.Visible() {
+		t.Error("the ota panel should be hidden for the recovery target")
+	}
+	if u.buildBtn.Disabled() {
+		t.Error("recovery should be buildable straight away")
+	}
+
+	u.target.SetSelected(targetLabel(build.TargetOTA))
+	if !u.ota.panel.Visible() {
+		t.Error("the ota panel should appear with the ota target")
+	}
+	if !u.buildBtn.Disabled() {
+		t.Error("ota with no target-files must not be buildable")
+	}
+
+	base := filepath.Join(t.TempDir(), "rom-target_files-eng.zip")
+	if err := os.WriteFile(base, []byte("not really a zip"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u.state.otaBase = base
+	u.refreshOTA()
+	if u.buildBtn.Disabled() {
+		t.Error("ota with a target-files should be buildable")
+	}
+
+	u.target.SetSelected(targetLabel(build.TargetRecovery))
+	if u.ota.panel.Visible() {
+		t.Error("the ota panel should go away with the target")
+	}
+}
+
+// Keys are optional: without them the merge stops at a target-files package
+// the user signs themselves, and the form should say so rather than refuse.
+func TestOTAWithoutKeysIsAllowedAndExplained(t *testing.T) {
+	u := loaded(t)
+	base := filepath.Join(t.TempDir(), "rom-target_files.zip")
+	if err := os.WriteFile(base, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	u.target.SetSelected(targetLabel(build.TargetOTA))
+	u.state.otaBase = base
+	u.refreshOTA()
+
+	if u.buildBtn.Disabled() {
+		t.Error("a keyless merge is a legitimate build")
+	}
+	if !strings.Contains(u.ota.note.Text, "sign it yourself") &&
+		!strings.Contains(u.ota.note.Text, "sign yourself") {
+		t.Errorf("the note should say what a keyless build produces: %q", u.ota.note.Text)
+	}
+
+	opts, err := u.signingOptions(func(string, float64) {})
+	if err != nil {
+		t.Fatalf("keyless options should be valid: %v", err)
+	}
+	if !opts.MergedOnly() {
+		t.Error("no keys means the build stops at the merged target-files")
+	}
+}
+
+// A missing target-files must fail before anything slow happens.
+func TestOTARefusesAMissingTargetFiles(t *testing.T) {
+	u := loaded(t)
+	u.state.otaBase = filepath.Join(t.TempDir(), "gone.zip")
+	if _, err := u.signingOptions(func(string, float64) {}); err == nil {
+		t.Error("a target-files that is not there should be refused")
+	}
+}
+
+// The path shown must be the path that will be used; a stale field is a lie
+// about what Build is going to do.
+func TestOTAFieldsFollowTheState(t *testing.T) {
+	u := loaded(t)
+	u.target.SetSelected(targetLabel(build.TargetOTA))
+	u.state.otaBase = "/roms/redfin-target_files.zip"
+	u.state.otaKeys = "/keys/redfin"
+	u.refreshOTA()
+	if u.ota.base.Text != u.state.otaBase {
+		t.Errorf("base field %q does not match state %q", u.ota.base.Text, u.state.otaBase)
+	}
+	if u.ota.keys.Text != u.state.otaKeys {
+		t.Errorf("keys field %q does not match state %q", u.ota.keys.Text, u.state.otaKeys)
+	}
+	u.state.otaKeys = ""
+	u.refreshOTA()
+	if u.ota.keys.Text != "" {
+		t.Errorf("cleared keys should clear the field, got %q", u.ota.keys.Text)
+	}
+}

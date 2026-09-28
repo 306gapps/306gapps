@@ -9,6 +9,8 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
+
+	"github.com/306gapps/306gapps/internal/build"
 )
 
 // TestRenderSnapshot writes the window to a png so the layout can be looked at
@@ -40,6 +42,12 @@ func TestRenderSnapshot(t *testing.T) {
 	}
 	u.resolve()
 	u.refreshSummary()
+	if os.Getenv("GUI_SNAPSHOT_OTA") != "" {
+		u.target.SetSelected(targetLabel(build.TargetOTA))
+		u.state.otaBase = "/home/you/out/target/product/redfin/cr13-target_files.zip"
+		u.state.otaKeys = "/home/you/keys/redfin"
+		u.refreshOTA()
+	}
 	u.win.Resize(fyne.NewSize(940, 760))
 	u.win.Content().Refresh()
 

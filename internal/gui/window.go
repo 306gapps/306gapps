@@ -49,6 +49,7 @@ type window struct {
 	summaryLbl *widget.Label
 	warning    *widget.Label
 	target     *widget.Select
+	ota        *otaForm
 	buildBtn   *widget.Button
 	status     *widget.Label
 
@@ -91,6 +92,7 @@ func (u *window) build() fyne.CanvasObject {
 		if t, ok := byLabel[label]; ok {
 			u.state.target = t
 		}
+		u.refreshOTA()
 	})
 	u.target.SetSelectedIndex(0)
 
@@ -133,7 +135,10 @@ func (u *window) build() fyne.CanvasObject {
 		container.NewBorder(nil, nil, widget.NewLabel("Filter"), clear, u.filter),
 		widget.NewSeparator(),
 	)
+	u.ota = u.buildOTAForm()
+
 	bottom := container.NewVBox(
+		u.ota.panel,
 		widget.NewSeparator(),
 		u.warning,
 		u.summaryLbl,
@@ -290,7 +295,7 @@ func (u *window) rebuildList() {
 	}
 
 	u.list.Refresh()
-	u.buildBtn.Enable()
+	u.refreshBuildButton()
 }
 
 // matchesFilter is a substring test over the name, id, group and summary.
@@ -467,11 +472,10 @@ func (u *window) refreshSummary() {
 	u.summaryLbl.SetText(u.state.summary())
 	if u.resErr != nil {
 		u.warning.SetText(u.resErr.Error())
-		u.buildBtn.Disable()
 	} else {
 		u.warning.SetText("")
-		u.buildBtn.Enable()
 	}
+	u.refreshBuildButton()
 	u.summaryLbl.Refresh()
 	u.warning.Refresh()
 }

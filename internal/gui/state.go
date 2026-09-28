@@ -29,8 +29,14 @@ type state struct {
 	res      *catalog.Resolution
 	resErr   error
 
-	target  build.Target
-	busybox string
+	target build.Target
+
+	// The ota target needs the ROM and its signing keys; neither can be inferred.
+	otaBase  string
+	otaKeys  string
+	otaTools string
+	otaGrow  bool
+	busybox  string
 
 	mu       sync.Mutex
 	progress string
