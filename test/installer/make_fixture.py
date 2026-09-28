@@ -19,11 +19,11 @@ PACKAGES = [
     # id, name, category, path, asset, KiB, extra
     ("gmscore", "Google Play services", "core",
      "product/priv-app/PrebuiltGmsCore/PrebuiltGmsCore.apk", "gmscore.apk", 320,
-     {"required": True, "package": "com.google.android.gms",
+     {"required": True, "packages": ["com.google.android.gms"],
       "props": {"ro.com.google.gmsversion": "16_202509"}}),
     ("vending", "Google Play Store", "core",
      "product/priv-app/Phonesky/Phonesky.apk", "vending.apk", 90,
-     {"default": True, "requires": ["gmscore"], "package": "com.android.vending"}),
+     {"default": True, "requires": ["gmscore"], "packages": ["com.android.vending"]}),
     ("gsf", "Google Services Framework", "core",
      "product/priv-app/GoogleServicesFramework/GoogleServicesFramework.apk", "gsf.apk", 12,
      {"required": True}),

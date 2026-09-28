@@ -298,9 +298,11 @@ func packagesFile(plan *stage.Plan) []byte {
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range plan.Packages {
-		if p.Package != "" && !seen[p.Package] {
-			seen[p.Package] = true
-			out = append(out, p.Package)
+		for _, id := range p.Packages {
+			if id != "" && !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
 		}
 	}
 	sort.Strings(out)

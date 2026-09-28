@@ -74,9 +74,8 @@ type Package struct {
 	// Removes lists what the installer deletes for this package: an entry with a
 	// slash is an exact path, a bare name matches every app location on every partition.
 	Removes []string `json:"removes,omitempty"`
-	// Package is the Android package id, used to clear leftover app data when
-	// uninstalling. Optional.
-	Package string `json:"package,omitempty"`
+	// Packages are the Android package ids this installs, used to clear app data on uninstall.
+	Packages []string `json:"packages,omitempty"`
 
 	Files []File `json:"files"`
 	// Props are appended to the target's build properties.
@@ -110,6 +109,9 @@ type File struct {
 	Kind    Kind   `json:"kind"`
 	// Target is the link destination, set only when Kind is KindSymlink.
 	Target string `json:"target,omitempty"`
+	// Carried marks a payload that did not come from the dump this release was
+	// made from, and so cannot be refreshed when the device gets a new build.
+	Carried bool `json:"carried,omitempty"`
 }
 
 // IsSymlink reports whether this entry is a link rather than a payload.
