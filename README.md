@@ -61,6 +61,21 @@ markers instead of deleted, and build properties are applied with `resetprop`, s
 disabling the module restores the stock ROM exactly. Much safer than the recovery
 route, and it survives OTAs.
 
+### Uninstalling
+
+`306gapps uninstaller` builds a small recovery-flashable zip that removes an
+install. It carries no payload and is not tied to a release: the installer
+records what it wrote to `/system/etc/306gapps/files.list`, and the uninstaller
+reads that back, so one zip removes any package this tool has ever produced.
+
+It deletes only what was installed, prunes the directories that leaves empty --
+stopping at anything the ROM still uses -- and removes the `addon.d` script,
+without which the next dirty flash would restore everything.
+
+Apps that the install replaced are not restored by it. Dirty-flash the ROM
+first: that brings them back, and `addon.d` restores the Google apps at the same
+time, so the uninstaller then has something to remove.
+
 **`ota`** — a sideloadable A/B package, signed with your own ROM keys. For people
 who build and sign their own ROM. See below.
 
@@ -131,6 +146,7 @@ internal/build/templates
 internal/tui        interactive picker
 test/installer      runs the real recovery installer against a fake ROM tree
 test/ota            drives the ota target against a synthetic target-files package
+test/uninstaller    installs then uninstalls, checking nothing of ours survives
 ```
 
 ## Guarantees

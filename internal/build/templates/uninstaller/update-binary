@@ -1,0 +1,30 @@
+#!/sbin/sh
+# 306gapps uninstaller. Recovery invokes this as:
+#   update-binary <api> <outfd> <zipfile>
+OUTFD=$2
+ZIPFILE=$3
+TMP=/tmp/306gapps-uninstall
+
+ui_print() {
+  echo "ui_print $1" >> /proc/self/fd/"$OUTFD"
+  echo "ui_print" >> /proc/self/fd/"$OUTFD"
+}
+
+abort() {
+  ui_print "! $1"
+  exit 1
+}
+
+rm -rf "$TMP"
+mkdir -p "$TMP" || abort "cannot create $TMP"
+unzip -o "$ZIPFILE" 'installer/*' -d "$TMP" >/dev/null 2>&1 || abort "failed to unpack"
+chmod -R 0755 "$TMP/installer"
+
+BB="$TMP/installer/busybox"
+if [ -f "$BB" ] && chmod 0755 "$BB" && "$BB" true 2>/dev/null; then
+  mkdir -p "$TMP/bin"
+  "$BB" --install -s "$TMP/bin" 2>/dev/null && export PATH="$TMP/bin:$PATH" BUSYBOX="$BB"
+fi
+
+export OUTFD ZIPFILE TMP BUSYBOX
+. "$TMP/installer/uninstaller.sh"

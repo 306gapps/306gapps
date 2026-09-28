@@ -50,6 +50,8 @@ func run() error {
 		return cmdList(ctx, args)
 	case "build":
 		return cmdBuild(ctx, args)
+	case "uninstaller":
+		return cmdUninstaller(ctx, args)
 	case "cache":
 		return cmdCache(args)
 	case "validate":
@@ -71,6 +73,7 @@ usage:
   306gapps list                    list available releases
   306gapps list <release>          list packages in a release
   306gapps build [flags]           build without the picker
+  306gapps uninstaller [flags]     build a zip that removes an install
   306gapps cache [info|clear]      inspect or empty the download cache
   306gapps validate <manifest>     check a manifest for consistency
 
@@ -349,6 +352,46 @@ func cmdBuild(ctx context.Context, args []string) error {
 				"306gapps drive add_img_to_target_files, sign_target_files_apks\n"+
 				"and ota_from_target_files for you.")
 	}
+	return nil
+}
+
+func cmdUninstaller(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("uninstaller", flag.ContinueOnError)
+	src, cache := commonFlags(fs)
+	out := fs.String("out", "306gapps-uninstaller.zip", "output zip path")
+	noBusybox := fs.Bool("no-busybox", false, "do not bundle busybox")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	// No payload here, so the source is consulted only for busybox; missing is fine.
+	busybox := ""
+	if !*noBusybox {
+		s := newSource(*src, *cache)
+		if idx, err := s.Index(ctx); err == nil {
+			if p, ok := idx.BusyboxFor("arm64"); ok {
+				if local, err := s.FetchPayload(ctx, p); err == nil {
+					busybox = local
+				}
+			}
+		}
+		if busybox == "" {
+			fmt.Fprintln(os.Stderr,
+				"note: no busybox available; the uninstaller will use the recovery's own tools")
+		}
+	}
+
+	res, err := build.BuildUninstaller(build.UninstallerOptions{
+		Out: *out, Busybox: busybox,
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("%s\n", res.Path)
+	fmt.Fprintf(os.Stderr, "%s · sha256 %s\n\n", human(res.Size), res.SHA256)
+	fmt.Fprintln(os.Stderr,
+		"Dirty-flash your ROM first: that restores the apps the install replaced.\n"+
+			"Then flash this to take the Google apps back out.")
 	return nil
 }
 

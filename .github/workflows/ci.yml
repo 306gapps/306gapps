@@ -62,6 +62,9 @@ jobs:
       - name: Drive the ota target against a synthetic target-files package
         run: ./test/ota/run.sh /tmp/306gapps /tmp/fixture
 
+      - name: Install then uninstall, and check nothing of ours survives
+        run: ./test/uninstaller/run.sh /tmp/306gapps /tmp/fixture
+
   cross:
     runs-on: ubuntu-latest
     strategy:

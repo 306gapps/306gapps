@@ -29,4 +29,11 @@ free_bytes() { echo "${FAKE_FREE:-1073741824}"; }
 set_meta() { chmod "$2" "$1" 2>/dev/null; return 0; }
 
 UTIL_LOADED=1
-. "$TMP/installer/installer.sh"
+
+# The same harness drives the installer and the uninstaller; they differ only
+# in which script the zip carries.
+if [ -f "$TMP/installer/installer.sh" ]; then
+  . "$TMP/installer/installer.sh"
+else
+  . "$TMP/installer/uninstaller.sh"
+fi
