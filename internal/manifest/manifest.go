@@ -22,7 +22,15 @@ var Partitions = []string{"system", "system_ext", "product", "vendor"}
 type Manifest struct {
 	Schema   int       `json:"schema"`
 	Release  Release   `json:"release"`
+	Groups   []Group   `json:"groups"`
 	Packages []Package `json:"packages"`
+}
+
+// Group is a family of related packages, such as Chrome with its WebView and Trichrome library.
+type Group struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Summary string `json:"summary,omitempty"`
 }
 
 type Release struct {
@@ -61,10 +69,10 @@ type Source struct {
 }
 
 type Package struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Category string `json:"category"`
-	Summary  string `json:"summary,omitempty"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Group   string `json:"group"`
+	Summary string `json:"summary,omitempty"`
 
 	// Required packages are always installed and cannot be deselected.
 	Required bool `json:"required,omitempty"`
@@ -118,6 +126,8 @@ type File struct {
 	Stub bool `json:"stub,omitempty"`
 	// Kanged marks a payload taken from elsewhere rather than this release's dump, so a new build never refreshes it.
 	Kanged bool `json:"kanged,omitempty"`
+	// Synthetic marks a payload this project generates rather than extracts.
+	Synthetic bool `json:"synthetic,omitempty"`
 }
 
 // IsSymlink reports whether this entry is a link rather than a payload.
@@ -182,14 +192,21 @@ func (m *Manifest) Index() map[string]Package {
 	return idx
 }
 
-// Categories returns the distinct categories in manifest order.
-func (m *Manifest) Categories() []string {
-	seen := map[string]bool{}
-	var out []string
+// GroupIndex returns groups keyed by ID.
+func (m *Manifest) GroupIndex() map[string]Group {
+	idx := make(map[string]Group, len(m.Groups))
+	for _, g := range m.Groups {
+		idx[g.ID] = g
+	}
+	return idx
+}
+
+// Members returns a group's packages in manifest order.
+func (m *Manifest) Members(group string) []Package {
+	var out []Package
 	for _, p := range m.Packages {
-		if !seen[p.Category] {
-			seen[p.Category] = true
-			out = append(out, p.Category)
+		if p.Group == group {
+			out = append(out, p)
 		}
 	}
 	return out
@@ -210,6 +227,21 @@ func (m *Manifest) Validate() error {
 		add("release.android.api must be positive, got %d", m.Release.Android.API)
 	}
 
+	groups := map[string]bool{}
+	for i, g := range m.Groups {
+		if g.ID == "" {
+			add("groups[%d]: id is empty", i)
+			continue
+		}
+		if groups[g.ID] {
+			add("%s: duplicate group id", g.ID)
+		}
+		groups[g.ID] = true
+		if g.Name == "" {
+			add("%s: group name is empty", g.ID)
+		}
+	}
+
 	seen := map[string]bool{}
 	paths := map[string]string{}
 	for i, p := range m.Packages {
@@ -224,6 +256,11 @@ func (m *Manifest) Validate() error {
 		seen[p.ID] = true
 		if p.Name == "" {
 			add("%s: name is empty", where)
+		}
+		if p.Group == "" {
+			add("%s: group is empty", where)
+		} else if !groups[p.Group] {
+			add("%s: group %q is not declared", where, p.Group)
 		}
 		if len(p.Files) == 0 {
 			add("%s: has no files", where)

@@ -208,7 +208,7 @@ func cmdList(ctx context.Context, args []string) error {
 			flags = append(flags, "conflicts:"+strings.Join(p.Conflicts, "+"))
 		}
 		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-			p.ID, p.Category, human(p.Size()), strings.Join(flags, ","), p.Name)
+			p.ID, p.Group, human(p.Size()), strings.Join(flags, ","), p.Name)
 	}
 	return w.Flush()
 }

@@ -33,16 +33,20 @@ func fixture(t *testing.T) (*source.Source, source.ReleaseRef) {
 			ID: "a17-test", Android: manifest.Android{API: 37, Version: "17"},
 			AssetBase: "assets",
 		},
+		Groups: []manifest.Group{
+			{ID: "core", Name: "Core"},
+			{ID: "apps", Name: "Apps"},
+		},
 		Packages: []manifest.Package{
-			{ID: "gmscore", Name: "Play services", Category: "core", Required: true,
+			{ID: "gmscore", Name: "Play services", Group: "core", Required: true,
 				Files: []manifest.File{file("product/priv-app/Gms/Gms.apk", "gms.apk", 1000)}},
-			{ID: "vending", Name: "Play Store", Category: "core", Default: true,
+			{ID: "vending", Name: "Play Store", Group: "core", Default: true,
 				Requires: []string{"gmscore"},
 				Files:    []manifest.File{file("product/priv-app/Phonesky/Phonesky.apk", "v.apk", 2000)}},
-			{ID: "dialer-google", Name: "Google Phone", Category: "apps",
+			{ID: "dialer-google", Name: "Google Phone", Group: "apps",
 				Conflicts: []string{"dialer-aosp"},
 				Files:     []manifest.File{file("product/priv-app/GDialer/GDialer.apk", "d.apk", 3000)}},
-			{ID: "dialer-aosp", Name: "AOSP Dialer", Category: "apps",
+			{ID: "dialer-aosp", Name: "AOSP Dialer", Group: "apps",
 				Conflicts: []string{"dialer-google"},
 				Files:     []manifest.File{file("product/priv-app/Dialer/Dialer.apk", "a.apk", 500)}},
 		},
@@ -177,14 +181,62 @@ func TestDeselectingEverythingStillBuilds(t *testing.T) {
 	}
 }
 
+// Ticking a family takes every package in it, which is the whole point of
+// showing Chrome, the WebView and Trichrome as one thing.
+func TestGroupBoxTakesTheWholeFamily(t *testing.T) {
+	u := loaded(t)
+	g := u.groupRows["apps"]
+	if g == nil {
+		t.Fatal("no header for the apps family")
+	}
+	g.check.OnChanged(true)
+	for _, p := range g.members {
+		if !u.selected[p.ID] && !p.Required {
+			t.Errorf("%s left out after taking the family", p.ID)
+		}
+	}
+	g.check.OnChanged(false)
+	for _, p := range g.members {
+		if u.selected[p.ID] {
+			t.Errorf("%s left in after dropping the family", p.ID)
+		}
+	}
+}
+
+// A family of one would otherwise render a heading that just repeats the
+// package underneath it.
+func TestSingletonFamilyHasNoHeader(t *testing.T) {
+	u := loaded(t)
+	for id, members := range u.cat.ByGroup() {
+		if len(members) == 1 && u.groupRows[id] != nil {
+			t.Errorf("family %s has one member but drew a header", id)
+		}
+	}
+}
+
 func TestTargetSelectionIsCarried(t *testing.T) {
 	u := loaded(t)
 	if u.state.target != build.TargetRecovery {
 		t.Errorf("default target should be recovery, got %s", u.state.target)
 	}
-	u.target.SetSelected(targetLabel(build.TargetModule))
-	if u.state.target != build.TargetModule {
+	u.target.SetSelected(targetLabel(build.TargetOTA))
+	if u.state.target != build.TargetOTA {
 		t.Errorf("selecting a target should carry through, got %s", u.state.target)
+	}
+}
+
+// The module target is built by the CLI but deliberately absent from the
+// picker, and an offered-but-untested target is worse than one that is not
+// offered at all.
+func TestPickerDoesNotOfferTheModuleTarget(t *testing.T) {
+	u := loaded(t)
+	for _, label := range u.target.Options {
+		if strings.Contains(label, string(build.TargetModule)) {
+			t.Fatalf("picker offers the module target: %q", label)
+		}
+	}
+	if len(u.target.Options) != 2 {
+		t.Errorf("want recovery and ota, got %v", u.target.Options)
 	}
 }
 

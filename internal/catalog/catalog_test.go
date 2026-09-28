@@ -10,7 +10,7 @@ import (
 
 func pkg(id string, opts ...func(*manifest.Package)) manifest.Package {
 	p := manifest.Package{
-		ID: id, Name: id, Category: "apps",
+		ID: id, Name: id, Group: "apps",
 		Files: []manifest.File{{
 			Path: "product/app/" + id + "/" + id + ".apk", Asset: id + ".apk",
 			SHA256: strings.Repeat("a", 64), Size: 100, Kind: manifest.KindAPK,
@@ -31,9 +31,18 @@ func conflicts(ids ...string) func(*manifest.Package) {
 func required(p *manifest.Package) { p.Required = true }
 
 func cat(pkgs ...manifest.Package) *Catalog {
+	groups := map[string]bool{}
+	var gs []manifest.Group
+	for _, p := range pkgs {
+		if !groups[p.Group] {
+			groups[p.Group] = true
+			gs = append(gs, manifest.Group{ID: p.Group, Name: p.Group})
+		}
+	}
 	return New(&manifest.Manifest{
 		Schema:   manifest.Schema,
 		Release:  manifest.Release{ID: "test", Android: manifest.Android{API: 36}},
+		Groups:   gs,
 		Packages: pkgs,
 	})
 }

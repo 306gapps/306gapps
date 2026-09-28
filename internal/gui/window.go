@@ -55,6 +55,13 @@ type window struct {
 	// rows keeps the per-package widgets so the list can follow the resolution
 	// after every toggle, including packages pulled in as dependencies.
 	rows map[string]*packageRow
+	// groupRows keeps the family boxes; a family shows as taken only while every member is.
+	groupRows map[string]*groupRow
+}
+
+type groupRow struct {
+	check   *widget.Check
+	members []manifest.Package
 }
 
 // packageRow is one line: the box, plus the note saying why it is ticked.
@@ -69,8 +76,8 @@ func (u *window) build() fyne.CanvasObject {
 	u.releases.PlaceHolder = "loading releases…"
 
 	byLabel := map[string]build.Target{}
-	labels := make([]string, 0, len(build.Targets))
-	for _, t := range build.Targets {
+	labels := make([]string, 0, len(guiTargets))
+	for _, t := range guiTargets {
 		byLabel[targetLabel(t)] = t
 		labels = append(labels, targetLabel(t))
 	}
@@ -92,7 +99,7 @@ func (u *window) build() fyne.CanvasObject {
 	u.buildBtn.Disable()
 
 	u.filter = widget.NewEntry()
-	u.filter.SetPlaceHolder("Filter by name, id or category")
+	u.filter.SetPlaceHolder("Filter by name, id or family")
 	u.filter.OnChanged = func(string) { u.rebuildList(); u.refreshSummary() }
 	clear := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
 		u.filter.SetText("")
@@ -116,6 +123,9 @@ func (u *window) build() fyne.CanvasObject {
 	return container.NewBorder(top, bottom, nil, nil,
 		container.NewVScroll(u.list))
 }
+
+// guiTargets is what the picker offers; the Magisk/KernelSU module stays CLI-only until it is better tested.
+var guiTargets = []build.Target{build.TargetRecovery, build.TargetOTA}
 
 func targetLabel(t build.Target) string {
 	return fmt.Sprintf("%s — %s", t, t.Description())
@@ -178,6 +188,7 @@ func (u *window) onRelease(label string) {
 func (u *window) rebuildList() {
 	u.list.RemoveAll()
 	u.rows = map[string]*packageRow{}
+	u.groupRows = map[string]*groupRow{}
 
 	needle := ""
 	if u.filter != nil {
@@ -185,22 +196,29 @@ func (u *window) rebuildList() {
 	}
 
 	shown := 0
-	for _, category := range u.categories() {
+	for _, g := range u.groups() {
+		members := u.packagesIn(g.ID)
 		var rows []fyne.CanvasObject
-		for _, p := range u.packagesIn(category) {
-			if !matchesFilter(p, category, needle) {
+		var matched []manifest.Package
+		for _, p := range members {
+			if !matchesFilter(p, g.Name, needle) {
 				continue
 			}
-			rows = append(rows, u.packageRow(p))
+			matched = append(matched, p)
 		}
-		// A heading for an empty category is just noise while filtering.
-		if len(rows) == 0 {
+		if len(matched) == 0 {
 			continue
 		}
-		shown += len(rows)
-		u.list.Add(widget.NewLabelWithStyle(
-			categoryTitle(category), fyne.TextAlignLeading,
-			fyne.TextStyle{Bold: true}))
+		// A heading above a single package just repeats its name.
+		if len(members) > 1 {
+			rows = append(rows, u.groupHeader(g, members))
+			for _, p := range matched {
+				rows = append(rows, indent(u.packageRow(p)))
+			}
+		} else {
+			rows = append(rows, u.packageRow(matched[0]))
+		}
+		shown += len(matched)
 		for _, r := range rows {
 			u.list.Add(r)
 		}
@@ -217,20 +235,80 @@ func (u *window) rebuildList() {
 	u.buildBtn.Enable()
 }
 
-// matchesFilter is a plain substring test across the fields someone would
-// type: the name they see, the id they would pass on the command line, and the
-// category. Selections survive filtering because they live in the state, not
-// in the widgets.
-func matchesFilter(p manifest.Package, category, needle string) bool {
+// matchesFilter is a substring test over the name, id, group and summary.
+func matchesFilter(p manifest.Package, group, needle string) bool {
 	if needle == "" {
 		return true
 	}
-	for _, field := range []string{p.Name, p.ID, category, p.Summary} {
+	for _, field := range []string{p.Name, p.ID, group, p.Summary} {
 		if strings.Contains(strings.ToLower(field), needle) {
 			return true
 		}
 	}
 	return false
+}
+
+// groupHeader is the line above a family; its box takes or drops the whole family.
+func (u *window) groupHeader(g manifest.Group, members []manifest.Package) fyne.CanvasObject {
+	all := widget.NewCheck("", nil)
+	all.SetChecked(u.allSelectedIn(members))
+	all.OnChanged = u.groupToggle(members)
+
+	name := widget.NewLabelWithStyle(g.Name, fyne.TextAlignLeading,
+		fyne.TextStyle{Bold: true})
+
+	var total int64
+	for _, p := range members {
+		total += p.Size()
+	}
+	size := widget.NewLabel(humanSize(total))
+	size.Alignment = fyne.TextAlignTrailing
+
+	note := widget.NewLabel(g.Summary)
+	note.Wrapping = fyne.TextWrapOff
+	note.Truncation = fyne.TextTruncateEllipsis
+	note.Importance = widget.LowImportance
+
+	u.groupRows[g.ID] = &groupRow{check: all, members: members}
+
+	return container.NewBorder(nil, nil,
+		container.NewHBox(all, name), size, note)
+}
+
+func (u *window) groupToggle(members []manifest.Package) func(bool) {
+	return func(on bool) {
+		for _, p := range members {
+			if !p.Required {
+				u.selected[p.ID] = on
+			}
+		}
+		u.resolve()
+		u.refreshSummary()
+	}
+}
+
+// allSelectedIn reports whether every selectable package in the family is in.
+func (u *window) allSelectedIn(members []manifest.Package) bool {
+	for _, p := range members {
+		if p.Required {
+			continue
+		}
+		if u.res != nil {
+			if !u.res.Selected(p.ID) {
+				return false
+			}
+			continue
+		}
+		if !u.selected[p.ID] {
+			return false
+		}
+	}
+	return true
+}
+
+func indent(o fyne.CanvasObject) fyne.CanvasObject {
+	pad := widget.NewLabel("  ")
+	return container.NewBorder(nil, nil, pad, nil, o)
 }
 
 func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
@@ -274,6 +352,13 @@ func (u *window) refreshRows() {
 		return
 	}
 	implied := u.implied()
+	for _, g := range u.groupRows {
+		if want := u.allSelectedIn(g.members); g.check.Checked != want {
+			g.check.OnChanged = nil
+			g.check.SetChecked(want)
+			g.check.OnChanged = u.groupToggle(g.members)
+		}
+	}
 	for id, row := range u.rows {
 		want := u.res.Selected(id)
 		if row.check.Checked != want {
@@ -293,24 +378,6 @@ func (u *window) refreshRows() {
 		}
 		row.note.SetText(note)
 	}
-}
-
-func categoryTitle(c string) string {
-	switch c {
-	case "core":
-		return "CORE — required for anything Google to work"
-	case "setup":
-		return "SETUP"
-	case "apps":
-		return "APPS"
-	case "pixel":
-		return "PIXEL"
-	case "accessibility":
-		return "ACCESSIBILITY"
-	case "extras":
-		return "EXTRAS"
-	}
-	return c
 }
 
 func (u *window) refreshSummary() {

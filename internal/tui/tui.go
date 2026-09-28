@@ -31,10 +31,11 @@ const (
 	stepError
 )
 
-// row is one line in the package picker: either a category heading or a package.
+// row is one line in the package picker: either a group heading or a package.
 type row struct {
-	category string
-	pkg      *manifest.Package
+	group string
+	label string
+	pkg   *manifest.Package
 }
 
 // Model drives the whole wizard.
@@ -195,9 +196,9 @@ func (m *Model) onKey(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case " ", "x":
 			m.toggle()
 		case "a":
-			m.setCategory(true)
+			m.setGroup(true)
 		case "n":
-			m.setCategory(false)
+			m.setGroup(false)
 		case "r":
 			m.selected = map[string]bool{}
 			for _, id := range m.cat.Defaults() {
@@ -242,12 +243,16 @@ func tick() tea.Cmd {
 
 func (m *Model) buildRows() {
 	m.rows = nil
-	groups := m.cat.ByCategory()
-	for _, c := range m.cat.Manifest().Categories() {
-		m.rows = append(m.rows, row{category: c})
-		for i := range groups[c] {
-			p := groups[c][i]
-			m.rows = append(m.rows, row{category: c, pkg: &p})
+	members := m.cat.ByGroup()
+	for _, g := range m.cat.Groups() {
+		ps := members[g.ID]
+		// A family of one needs no heading; the package row says it all.
+		if len(ps) > 1 {
+			m.rows = append(m.rows, row{group: g.ID, label: g.Name})
+		}
+		for i := range ps {
+			p := ps[i]
+			m.rows = append(m.rows, row{group: g.ID, pkg: &p})
 		}
 	}
 }
@@ -279,10 +284,10 @@ func (m *Model) toggle() {
 	m.resolve()
 }
 
-func (m *Model) setCategory(on bool) {
-	cat := m.rows[m.cursor].category
+func (m *Model) setGroup(on bool) {
+	cat := m.rows[m.cursor].group
 	for _, r := range m.rows {
-		if r.pkg != nil && r.category == cat && !r.pkg.Required {
+		if r.pkg != nil && r.group == cat && !r.pkg.Required {
 			m.selected[r.pkg.ID] = on
 		}
 	}
@@ -439,7 +444,7 @@ func (m *Model) viewPackages() string {
 	for i := start; i < len(m.rows) && i < start+window; i++ {
 		r := m.rows[i]
 		if r.pkg == nil {
-			b.WriteString("\n" + category.Render(strings.ToUpper(r.category)) + "\n")
+			b.WriteString("\n" + category.Render(strings.ToUpper(r.label)) + "\n")
 			continue
 		}
 		box := "[ ]"

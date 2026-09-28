@@ -11,8 +11,9 @@ func base() *Manifest {
 	return &Manifest{
 		Schema:  Schema,
 		Release: Release{ID: "a16-test", Android: Android{API: 36, Version: "16"}},
+		Groups:  []Group{{ID: "core", Name: "Core"}},
 		Packages: []Package{{
-			ID: "gmscore", Name: "Google Play services", Category: "core", Required: true,
+			ID: "gmscore", Name: "Google Play services", Group: "core", Required: true,
 			Files: []File{{Path: "product/priv-app/GmsCore/GmsCore.apk", Asset: "gmscore.apk",
 				SHA256: digest, Size: 1, Mode: "0644", Kind: KindAPK}},
 		}},
@@ -84,7 +85,7 @@ func TestValidateRejectsBadDigest(t *testing.T) {
 func TestValidateRejectsConflictingRequiredPackages(t *testing.T) {
 	m := base()
 	m.Packages = append(m.Packages, Package{
-		ID: "alt", Name: "Alt", Category: "core", Required: true,
+		ID: "alt", Name: "Alt", Group: "core", Required: true,
 		Conflicts: []string{"gmscore"},
 		Files:     []File{{Path: "product/app/Alt/Alt.apk", Asset: "alt.apk", SHA256: digest, Kind: KindAPK}},
 	})

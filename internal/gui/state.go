@@ -109,18 +109,18 @@ func (s *state) summary() string {
 	return line
 }
 
-func (s *state) categories() []string {
+func (s *state) groups() []manifest.Group {
 	if s.cat == nil {
 		return nil
 	}
-	return s.cat.Manifest().Categories()
+	return s.cat.Groups()
 }
 
-func (s *state) packagesIn(category string) []manifest.Package {
+func (s *state) packagesIn(group string) []manifest.Package {
 	if s.cat == nil {
 		return nil
 	}
-	return s.cat.ByCategory()[category]
+	return s.cat.ByGroup()[group]
 }
 
 func (s *state) setProgress(line string) {

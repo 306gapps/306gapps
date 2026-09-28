@@ -36,13 +36,25 @@ func (c *Catalog) Defaults() []string {
 	return out
 }
 
-// ByCategory groups packages for display, preserving manifest order.
-func (c *Catalog) ByCategory() map[string][]manifest.Package {
+// ByGroup buckets packages into their app family, preserving manifest order.
+func (c *Catalog) ByGroup() map[string][]manifest.Package {
 	g := map[string][]manifest.Package{}
 	for _, p := range c.m.Packages {
-		g[p.Category] = append(g[p.Category], p)
+		g[p.Group] = append(g[p.Group], p)
 	}
 	return g
+}
+
+// Groups returns the app families that have at least one package, in order.
+func (c *Catalog) Groups() []manifest.Group {
+	have := c.ByGroup()
+	out := make([]manifest.Group, 0, len(c.m.Groups))
+	for _, g := range c.m.Groups {
+		if len(have[g.ID]) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // Resolution is the outcome of resolving a selection.

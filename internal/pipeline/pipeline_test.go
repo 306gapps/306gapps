@@ -53,7 +53,7 @@ func newFixture(t *testing.T) *fixture {
 		f.Kind = kind
 		f.Context = "u:object_r:system_file:s0"
 		return manifest.Package{
-			ID: id, Name: strings.ToUpper(id), Category: category, Files: []manifest.File{f},
+			ID: id, Name: strings.ToUpper(id), Group: category, Files: []manifest.File{f},
 		}
 	}
 
@@ -82,6 +82,10 @@ func newFixture(t *testing.T) *fixture {
 			Source:    manifest.Source{Device: "comet", Build: "BP41.250901.001"},
 			Created:   time.Date(2026, 9, 5, 0, 0, 0, 0, time.UTC),
 			AssetBase: "assets",
+		},
+		Groups: []manifest.Group{
+			{ID: "core", Name: "Core"},
+			{ID: "apps", Name: "Apps"},
 		},
 		Packages: []manifest.Package{gms, vending, gsa, dialerG, dialerA},
 	}
