@@ -5,6 +5,7 @@ go 1.27.1
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/smallstep/pkcs7 v0.2.3
 )
 
 require (

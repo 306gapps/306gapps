@@ -61,6 +61,21 @@ markers instead of deleted, and build properties are applied with `resetprop`, s
 disabling the module restores the stock ROM exactly. Much safer than the recovery
 route, and it survives OTAs.
 
+### Signing
+
+Packages are signed by default. The signature is the JAR form a recovery
+checks -- per-entry digests in `META-INF/MANIFEST.MF`, digests of those in
+`META-INF/306GAPPS.SF`, and a PKCS#7 signature over that -- and it attests that
+the zip has not been altered since it was built. It is not a claim about who
+built it, which is why every gapps distribution self-signs and there is nothing
+to obtain from a certificate authority.
+
+A signing identity is generated on first use and kept in your config directory.
+Pass `-key` and `-cert` to use your own, or `-no-sign` to skip it. The `ota`
+target is never signed here: the AOSP tools sign that one with your ROM's key.
+
+Signing is done in-process, so no JDK is needed.
+
 ### Uninstalling
 
 `306gapps uninstaller` builds a small recovery-flashable zip that removes an

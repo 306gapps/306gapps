@@ -3,10 +3,13 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +21,7 @@ import (
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/catalog"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/sign"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
 	"github.com/306gapps/306gapps/internal/tui"
@@ -226,6 +230,9 @@ func cmdBuild(ctx context.Context, args []string) error {
 	grow := fs.Bool("ota-grow", false, "ota: raise a partition's size budget if the selection overflows it")
 	noBusybox := fs.Bool("no-busybox", false,
 		"recovery: do not bundle busybox, use the recovery's own tools")
+	noSign := fs.Bool("no-sign", false, "do not sign the package")
+	keyPath := fs.String("key", "", "signing key (PEM); default: a generated one")
+	certPath := fs.String("cert", "", "signing certificate (PEM)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -342,6 +349,14 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 	fmt.Fprintln(os.Stderr, "\r\033[K")
 
+	// The ota target is signed later by the AOSP tools with the ROM's own key.
+	if !*noSign && target != build.TargetOTA {
+		result, err = signPackage(result, *keyPath, *certPath)
+		if err != nil {
+			return err
+		}
+	}
+
 	fmt.Printf("%s\n", result.Path)
 	fmt.Fprintf(os.Stderr, "%s · %d entries · sha256 %s\n",
 		human(result.Size), result.Files, result.SHA256)
@@ -355,11 +370,76 @@ func cmdBuild(ctx context.Context, args []string) error {
 	return nil
 }
 
+// configDir is where a generated signing identity lives.
+func configDir() string {
+	if d, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(d, "306gapps")
+	}
+	return ".306gapps"
+}
+
+// signPackage signs a built zip in place, generating an identity on first use.
+func signPackage(res *build.Result, keyPath, certPath string) (*build.Result, error) {
+	var (
+		key *sign.Key
+		err error
+	)
+	switch {
+	case keyPath != "" && certPath != "":
+		key, err = sign.Load(keyPath, certPath)
+	case keyPath != "" || certPath != "":
+		return nil, fmt.Errorf("-key and -cert must be given together")
+	default:
+		var created bool
+		key, created, err = sign.LoadOrGenerate(configDir(), "306gapps")
+		if created && err == nil {
+			fmt.Fprintf(os.Stderr, "generated a signing key in %s\n", configDir())
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("signing key: %w", err)
+	}
+
+	tmp := res.Path + ".signed"
+	if err := sign.Zip(res.Path, tmp, key); err != nil {
+		return nil, fmt.Errorf("sign: %w", err)
+	}
+	if err := os.Rename(tmp, res.Path); err != nil {
+		return nil, err
+	}
+	if err := sign.Verify(res.Path); err != nil {
+		return nil, fmt.Errorf("the signature did not verify: %w", err)
+	}
+	return describeSigned(res)
+}
+
+// describeSigned restates size and digest after signing changed the file.
+func describeSigned(res *build.Result) (*build.Result, error) {
+	f, err := os.Open(res.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return nil, err
+	}
+	out := *res
+	out.Size = st.Size()
+	out.SHA256 = hex.EncodeToString(h.Sum(nil))
+	return &out, nil
+}
+
 func cmdUninstaller(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("uninstaller", flag.ContinueOnError)
 	src, cache := commonFlags(fs)
 	out := fs.String("out", "306gapps-uninstaller.zip", "output zip path")
 	noBusybox := fs.Bool("no-busybox", false, "do not bundle busybox")
+	noSign := fs.Bool("no-sign", false, "do not sign the package")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -386,6 +466,11 @@ func cmdUninstaller(ctx context.Context, args []string) error {
 	})
 	if err != nil {
 		return err
+	}
+	if !*noSign {
+		if res, err = signPackage(res, "", ""); err != nil {
+			return err
+		}
 	}
 	fmt.Printf("%s\n", res.Path)
 	fmt.Fprintf(os.Stderr, "%s · sha256 %s\n\n", human(res.Size), res.SHA256)

@@ -115,3 +115,16 @@ else
 fi
 
 exit $fail
+
+echo "== the package is signed =="
+check "MANIFEST.MF present"     'unzip -l "$ZIP" | grep -q "META-INF/MANIFEST.MF"'
+check "signature block present" 'unzip -l "$ZIP" | grep -qE "META-INF/[A-Z0-9]+\.RSA"'
+check "openssl verifies it"     '
+  d=$(mktemp -d); unzip -q -o "$ZIP" "META-INF/*" -d "$d"
+  openssl smime -verify -inform DER -in "$d"/META-INF/*.RSA \
+    -content "$d"/META-INF/*.SF -noverify -binary -out /dev/null 2>/dev/null'
+check "every payload is digested" '
+  d=$(mktemp -d); unzip -q -o "$ZIP" META-INF/MANIFEST.MF -d "$d"
+  n=$(grep -c "^Name: files/" "$d/META-INF/MANIFEST.MF")
+  z=$(unzip -l "$ZIP" | grep -c " files/")
+  [ "$n" = "$z" ]'
