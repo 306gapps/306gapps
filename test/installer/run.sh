@@ -114,8 +114,6 @@ else
     || { echo "  FAIL wrong error:"; cat "$WORK/log3"; fail=1; }
 fi
 
-exit $fail
-
 echo "== the package is signed =="
 check "MANIFEST.MF present"     'unzip -l "$ZIP" | grep -q "META-INF/MANIFEST.MF"'
 check "signature block present" 'unzip -l "$ZIP" | grep -qE "META-INF/[A-Z0-9]+\.RSA"'
@@ -128,3 +126,5 @@ check "every payload is digested" '
   n=$(grep -c "^Name: files/" "$d/META-INF/MANIFEST.MF")
   z=$(unzip -l "$ZIP" | grep -c " files/")
   [ "$n" = "$z" ]'
+
+exit $fail

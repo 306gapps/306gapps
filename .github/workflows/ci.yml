@@ -54,6 +54,11 @@ jobs:
       - name: Build
         run: go build -o /tmp/306gapps ./cmd/306gapps
 
+      # The suites check the signature with openssl rather than with our own
+      # verifier, so it has to be present.
+      - name: openssl is available
+        run: openssl version
+
       - name: Install the real installer into a fake ROM
         run: |
           python3 test/installer/make_fixture.py /tmp/fixture
