@@ -195,3 +195,31 @@ func TestValidateStillRequiresAnAssetForRealFiles(t *testing.T) {
 	})
 	wantErr(t, m, "has no asset")
 }
+
+func TestValidateAcceptsRemovalByBareName(t *testing.T) {
+	// A bare name covers every app location on every partition, which is how
+	// one entry handles ROMs that disagree about where an app lives.
+	m := base()
+	m.Packages[0].Removes = []string{"Dialer", "product/app/messaging"}
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRejectsAbsoluteRemoval(t *testing.T) {
+	m := base()
+	m.Packages[0].Removes = []string{"/system/app/Foo"}
+	wantErr(t, m, "bare name or partition-relative")
+}
+
+func TestValidateRejectsEscapingRemoval(t *testing.T) {
+	m := base()
+	m.Packages[0].Removes = []string{"product/../../etc"}
+	wantErr(t, m, "escapes the partition")
+}
+
+func TestValidateRejectsRemovalOnAnUnknownPartition(t *testing.T) {
+	m := base()
+	m.Packages[0].Removes = []string{"odm/app/Foo"}
+	wantErr(t, m, "unknown partition")
+}

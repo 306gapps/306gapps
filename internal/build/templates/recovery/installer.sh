@@ -57,6 +57,18 @@ ui_print "- ROM matches API $APILEVEL"
 # ---- mount every partition the package writes to ---------------------------
 
 PARTS=$(awk -F'\t' '{split($1,a,"/"); print a[1]}' "$LIST" | sort -u)
+
+# A removal can name a partition the payload never writes to -- and a bare
+# name means every partition -- so those have to be mounted too.
+if [ -s "$TMP/installer/removals.txt" ]; then
+  if grep -qv '/' "$TMP/installer/removals.txt"; then
+    PARTS=$(printf '%s\nsystem\nsystem_ext\nproduct\n' "$PARTS" | sort -u)
+  else
+    PARTS=$(awk -F/ 'NF>1 {print $1}' "$TMP/installer/removals.txt" |
+            cat - <(echo "$PARTS") | sort -u)
+  fi
+fi
+PARTS=$(echo "$PARTS" | grep -v '^$')
 for part in $PARTS; do
   case "$part" in
     system) target="$SYSROOT" ;;
@@ -93,19 +105,41 @@ done
 
 # ---- remove superseded AOSP packages ---------------------------------------
 
+# drop_path removes one resolved victim, if it is there.
+drop_path() {
+  part=$1; rest=$2
+  eval "target=\$ROOT_$part"
+  [ -z "$target" ] && return 0
+  victim="$target/$rest"
+  if [ -e "$victim" ]; then
+    log "rm $part/$rest"
+    rm -rf "$victim"
+    REMOVED=$((REMOVED + 1))
+  fi
+}
+
 if [ -s "$TMP/installer/removals.txt" ]; then
   ui_print "- removing superseded apps"
-  while IFS= read -r rel; do
-    [ -z "$rel" ] && continue
-    part=${rel%%/*}
-    eval "target=\$ROOT_$part"
-    [ -z "$target" ] && continue
-    victim="$target/${rel#*/}"
-    if [ -e "$victim" ]; then
-      log "rm $rel"
-      rm -rf "$victim"
-    fi
+  REMOVED=0
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    case "$entry" in
+      */*)
+        # An exact partition-relative path.
+        drop_path "${entry%%/*}" "${entry#*/}"
+        ;;
+      *)
+        # A bare name: look everywhere an app can live. ROMs disagree about
+        # which partition holds a given app, so the name is what identifies it.
+        for part in system system_ext product; do
+          for dir in app priv-app; do
+            drop_path "$part" "$dir/$entry"
+          done
+        done
+        ;;
+    esac
   done < "$TMP/installer/removals.txt"
+  ui_print "  removed $REMOVED"
 fi
 
 # ---- install ---------------------------------------------------------------

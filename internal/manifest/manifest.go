@@ -71,8 +71,12 @@ type Package struct {
 
 	Requires  []string `json:"requires,omitempty"`
 	Conflicts []string `json:"conflicts,omitempty"`
-	// Removes lists AOSP packages the installer deletes, by install path.
+	// Removes lists what the installer deletes for this package: an entry with a
+	// slash is an exact path, a bare name matches every app location on every partition.
 	Removes []string `json:"removes,omitempty"`
+	// Package is the Android package id, used to clear leftover app data when
+	// uninstalling. Optional.
+	Package string `json:"package,omitempty"`
 
 	Files []File `json:"files"`
 	// Props are appended to the target's build properties.
@@ -275,6 +279,19 @@ func (m *Manifest) Validate() error {
 			}
 			if c == p.ID {
 				add("%s: conflicts with itself", p.ID)
+			}
+		}
+		for _, r := range p.Removes {
+			switch {
+			case r == "":
+				add("%s: empty removal entry", p.ID)
+			case path.IsAbs(r):
+				add("%s: removal %q must be a bare name or partition-relative", p.ID, r)
+			case strings.Contains(r, ".."):
+				add("%s: removal %q escapes the partition", p.ID, r)
+			case strings.Contains(r, "/") && !validPartition(strings.SplitN(r, "/", 2)[0]):
+				add("%s: removal %q has unknown partition %q", p.ID, r,
+					strings.SplitN(r, "/", 2)[0])
 			}
 		}
 		if p.Required {

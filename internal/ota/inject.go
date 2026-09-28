@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/stage"
 )
 
@@ -74,14 +75,7 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 	sort.Strings(res.Partitions)
 
 	// Paths the selection supersedes, as target-files prefixes.
-	var removePrefixes []string
-	for _, r := range plan.Removes {
-		part, rel, ok := strings.Cut(r, "/")
-		if !ok {
-			continue
-		}
-		removePrefixes = append(removePrefixes, tfDir(part)+"/"+rel)
-	}
+	removePrefixes := removalPrefixes(plan.Removes)
 
 	fsConfigs := map[string]*fsConfig{}
 	var certs *apkCerts
@@ -166,15 +160,15 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 	}
 
 	// Drop metadata for the files we removed.
-	for _, r := range plan.Removes {
-		part, rel, ok := strings.Cut(r, "/")
+	for _, rel := range removalPaths(plan.Removes) {
+		part, rest, ok := strings.Cut(rel, "/")
 		if !ok {
 			continue
 		}
 		if cfg := fsConfigs[part]; cfg != nil {
-			cfg.removeUnder(rel)
+			cfg.removeUnder(rest)
 		}
-		certs.remove(path.Base(rel) + ".apk")
+		certs.remove(path.Base(rest) + ".apk")
 	}
 
 	// Write the payloads and record their ownership.
@@ -274,6 +268,41 @@ func Inject(plan *stage.Plan, opt InjectOptions) (*InjectResult, error) {
 		return nil, err
 	}
 	return res, nil
+}
+
+// appDirs are the locations an installable app can occupy on a partition.
+var appDirs = []string{"app", "priv-app"}
+
+// removalPaths expands removal entries into partition-relative paths: a bare name
+// is searched in every app dir on every partition, since ROMs disagree about where an app lives.
+func removalPaths(removes []string) []string {
+	var out []string
+	for _, r := range removes {
+		if strings.Contains(r, "/") {
+			out = append(out, r)
+			continue
+		}
+		for _, part := range manifest.Partitions {
+			for _, dir := range appDirs {
+				out = append(out, part+"/"+dir+"/"+r)
+			}
+		}
+	}
+	return out
+}
+
+// removalPrefixes renders the same expansion in target-files form.
+func removalPrefixes(removes []string) []string {
+	paths := removalPaths(removes)
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		part, rel, ok := strings.Cut(p, "/")
+		if !ok {
+			continue
+		}
+		out = append(out, tfDir(part)+"/"+rel)
+	}
+	return out
 }
 
 // looksLikeTargetFiles rejects a factory image, OTA zip, or plain system image passed by mistake.

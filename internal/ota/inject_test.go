@@ -352,3 +352,56 @@ func TestInjectReplacesRatherThanDuplicating(t *testing.T) {
 		t.Errorf("want 1 replacement, got %d", res.Replaced)
 	}
 }
+
+func TestInjectRemovesByBareName(t *testing.T) {
+	// A bare name has to reach the app wherever the ROM put it.
+	base := writeBaseTargetFiles(t, nil)
+	plan := testPlan(t)
+	plan.Removes = []string{"QuickSearchBox", "Dialer"}
+
+	out := filepath.Join(t.TempDir(), "merged.zip")
+	res, err := Inject(plan, InjectOptions{Base: base, Out: out})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+
+	for _, f := range zr.File {
+		if strings.Contains(f.Name, "QuickSearchBox") || strings.Contains(f.Name, "SYSTEM_EXT/priv-app/Dialer/") {
+			t.Errorf("%s should have been removed by bare name", f.Name)
+		}
+	}
+	if res.Removed != 2 {
+		t.Errorf("want 2 removals, got %d", res.Removed)
+	}
+}
+
+func TestRemovalPathsExpansion(t *testing.T) {
+	got := removalPaths([]string{"Dialer"})
+	want := map[string]bool{
+		"system/app/Dialer": true, "system/priv-app/Dialer": true,
+		"system_ext/app/Dialer": true, "system_ext/priv-app/Dialer": true,
+		"product/app/Dialer": true, "product/priv-app/Dialer": true,
+		"vendor/app/Dialer": true, "vendor/priv-app/Dialer": true,
+	}
+	for _, g := range got {
+		if !want[g] {
+			t.Errorf("unexpected expansion %q", g)
+		}
+		delete(want, g)
+	}
+	if len(want) > 0 {
+		t.Errorf("missing expansions: %v", want)
+	}
+}
+
+func TestRemovalPathsLeavesExactPathsAlone(t *testing.T) {
+	got := removalPaths([]string{"product/app/messaging"})
+	if len(got) != 1 || got[0] != "product/app/messaging" {
+		t.Fatalf("got %v", got)
+	}
+}

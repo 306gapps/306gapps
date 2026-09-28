@@ -19,14 +19,27 @@ fi
 # deleted, so disabling the module restores the stock ROM exactly.
 if [ -s "$MODPATH/removals.txt" ]; then
   ui_print "- masking superseded apps"
-  while IFS= read -r rel; do
-    [ -z "$rel" ] && continue
-    case "$rel" in
-      system/*) dir="$MODPATH/$rel" ;;
-      *)        dir="$MODPATH/system/$rel" ;;
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    case "$entry" in
+      */*)
+        case "$entry" in
+          system/*) set -- "$MODPATH/$entry" ;;
+          *)        set -- "$MODPATH/system/$entry" ;;
+        esac
+        ;;
+      *)
+        # A bare name masks every app location on every partition; a marker
+        # over a directory that does not exist is harmless.
+        set -- "$MODPATH/system/app/$entry" "$MODPATH/system/priv-app/$entry" \
+               "$MODPATH/system/product/app/$entry" "$MODPATH/system/product/priv-app/$entry" \
+               "$MODPATH/system/system_ext/app/$entry" "$MODPATH/system/system_ext/priv-app/$entry"
+        ;;
     esac
-    mkdir -p "$dir"
-    touch "$dir/.replace"
+    for dir in "$@"; do
+      mkdir -p "$dir"
+      touch "$dir/.replace"
+    done
   done < "$MODPATH/removals.txt"
 fi
 
