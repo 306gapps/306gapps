@@ -64,8 +64,10 @@ if [ -s "$TMP/installer/removals.txt" ]; then
   if grep -qv '/' "$TMP/installer/removals.txt"; then
     PARTS=$(printf '%s\nsystem\nsystem_ext\nproduct\n' "$PARTS" | sort -u)
   else
-    PARTS=$(awk -F/ 'NF>1 {print $1}' "$TMP/installer/removals.txt" |
-            cat - <(echo "$PARTS") | sort -u)
+    # A brace group rather than process substitution: recovery's shell is
+    # ash, which has no <(...), and neither does dash.
+    PARTS=$({ awk -F/ 'NF>1 {print $1}' "$TMP/installer/removals.txt"
+              echo "$PARTS"; } | sort -u)
   fi
 fi
 PARTS=$(echo "$PARTS" | grep -v '^$')

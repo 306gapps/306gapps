@@ -24,21 +24,23 @@ jobs:
       - run: go vet ./...
       - run: go test -race ./...
 
+      # Recovery runs busybox ash, which has no bashisms. /bin/sh here is dash,
+      # which is the closest strict POSIX shell available and rejects the same
+      # things. Every template, not a hand-listed subset: the uninstaller was
+      # missing from this list and went unchecked.
       - name: Installer scripts are POSIX sh
         run: |
-          for f in internal/build/templates/recovery/update-binary \
-                   internal/build/templates/recovery/*.sh \
-                   internal/build/templates/module/*; do
-            sh -n "$f" || exit 1
+          fail=0
+          for f in $(git ls-files 'internal/build/templates/*' | grep -v NOTICE); do
+            sh -n "$f" || { echo "::error file=$f::not POSIX sh"; fail=1; }
           done
+          exit $fail
 
       - name: shellcheck
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
           shellcheck -s sh -S warning \
-            internal/build/templates/recovery/update-binary \
-            internal/build/templates/recovery/*.sh \
-            internal/build/templates/module/*
+            $(git ls-files 'internal/build/templates/*' | grep -v NOTICE)
 
   installer:
     runs-on: ubuntu-latest
@@ -83,7 +85,10 @@ jobs:
       - name: Install the GUI toolkit's build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev
+          # The toolkit's glfw builds both an X11 and a Wayland backend, so it
+          # needs the Wayland headers even to compile for X11.
+          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
       - run: go build -tags gui ./cmd/306gapps-gui
       - run: go vet -tags gui ./internal/gui/
       - run: go test -tags gui ./internal/gui/

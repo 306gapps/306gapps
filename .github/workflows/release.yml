@@ -93,7 +93,10 @@ jobs:
         if: matrix.goos == 'linux'
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev
+          # glfw compiles both backends, so the Wayland headers are needed
+          # even though the binary also runs under plain X11.
+          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev \
+            libwayland-dev libxkbcommon-dev wayland-protocols
 
       - name: Build
         shell: bash
