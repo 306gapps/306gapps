@@ -5,12 +5,12 @@ package gui
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
@@ -50,6 +50,16 @@ type window struct {
 	status     *widget.Label
 
 	refs map[string]source.ReleaseRef
+	// rows keeps the per-package widgets so the list can follow the resolution
+	// after every toggle, including packages pulled in as dependencies.
+	rows map[string]*packageRow
+}
+
+// packageRow is one line: the box, plus the note saying why it is ticked.
+type packageRow struct {
+	check *widget.Check
+	note  *widget.Label
+	pkg   manifest.Package
 }
 
 func (u *window) build() fyne.CanvasObject {
@@ -157,6 +167,7 @@ func (u *window) onRelease(label string) {
 // rebuildList redraws the whole package list, which only the release changing needs.
 func (u *window) rebuildList() {
 	u.list.RemoveAll()
+	u.rows = map[string]*packageRow{}
 	for _, category := range u.categories() {
 		header := widget.NewLabelWithStyle(
 			categoryTitle(category), fyne.TextAlignLeading,
@@ -174,13 +185,16 @@ func (u *window) rebuildList() {
 
 func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	check := widget.NewCheck("", nil)
-	check.SetChecked(u.selected[p.ID] || p.Required)
 	if p.Required {
-		// A required package cannot be deselected, so say so rather than
-		// offering a control that silently does nothing.
+		check.SetChecked(true)
 		check.Disable()
+	} else {
+		check.SetChecked(u.selected[p.ID])
 	}
 	check.OnChanged = func(on bool) {
+		if p.Required {
+			return
+		}
 		u.selected[p.ID] = on
 		u.resolve()
 		u.refreshSummary()
@@ -192,18 +206,51 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	size := widget.NewLabel(humanSize(p.Size()))
 	size.Alignment = fyne.TextAlignTrailing
 
-	row := container.NewBorder(nil, nil,
-		container.NewHBox(check, name),
-		size,
-		container.New(layout.NewHBoxLayout(), id))
+	note := widget.NewLabel("")
+	note.Wrapping = fyne.TextWrapWord
+	note.Importance = widget.LowImportance
+	note.Hide()
 
-	if p.Summary != "" {
-		note := widget.NewLabel(p.Summary)
-		note.Wrapping = fyne.TextWrapWord
-		note.Importance = widget.LowImportance
-		return container.NewVBox(row, note)
+	row := &packageRow{check: check, note: note, pkg: p}
+	u.rows[p.ID] = row
+
+	head := container.NewBorder(nil, nil,
+		container.NewHBox(check, name, id), size, nil)
+	return container.NewVBox(head, note)
+}
+
+// refreshRows brings every line back in line with the resolution.
+func (u *window) refreshRows() {
+	if u.res == nil {
+		return
 	}
-	return row
+	implied := u.implied()
+	for id, row := range u.rows {
+		want := u.res.Selected(id)
+		if row.check.Checked != want {
+			// Assign the field rather than SetChecked, which would re-enter OnChanged.
+			row.check.Checked = want
+			row.check.Refresh()
+		}
+
+		var note string
+		switch {
+		case row.pkg.Required:
+			note = "required"
+		case implied[id]:
+			note = "added as a dependency of " + strings.Join(u.res.Implied[id], ", ")
+		default:
+			note = row.pkg.Summary
+		}
+		row.note.SetText(note)
+		// An empty note still occupies a line, which over fifty packages is a
+		// screen of nothing.
+		if note == "" {
+			row.note.Hide()
+		} else {
+			row.note.Show()
+		}
+	}
 }
 
 func categoryTitle(c string) string {
@@ -225,6 +272,7 @@ func categoryTitle(c string) string {
 }
 
 func (u *window) refreshSummary() {
+	u.refreshRows()
 	u.summaryLbl.SetText(u.state.summary())
 	if u.resErr != nil {
 		u.warning.SetText(u.resErr.Error())

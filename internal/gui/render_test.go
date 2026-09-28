@@ -1,0 +1,41 @@
+//go:build gui
+
+package gui
+
+import (
+	"image/png"
+	"os"
+	"testing"
+
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/test"
+)
+
+// TestRenderSnapshot writes the window to a png so the layout can be looked at
+// without a display. Skipped unless GUI_SNAPSHOT names a path.
+func TestRenderSnapshot(t *testing.T) {
+	out := os.Getenv("GUI_SNAPSHOT")
+	if out == "" {
+		t.Skip("set GUI_SNAPSHOT to write a snapshot")
+	}
+	u := loaded(t)
+	// Tick something with a dependency and something that conflicts, so the
+	// snapshot shows the states that matter rather than only the idle one.
+	u.selected["dialer-google"] = true
+	u.resolve()
+	u.refreshSummary()
+	u.win.Resize(fyne.NewSize(940, 760))
+	u.win.Content().Refresh()
+
+	img := u.win.Canvas().Capture()
+	f, err := os.Create(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := png.Encode(f, img); err != nil {
+		t.Fatal(err)
+	}
+	t.Logf("wrote %s (%v)", out, img.Bounds())
+	_ = test.NewApp
+}

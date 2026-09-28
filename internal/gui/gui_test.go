@@ -187,3 +187,40 @@ func TestTargetSelectionIsCarried(t *testing.T) {
 		t.Errorf("selecting a target should carry through, got %s", u.state.target)
 	}
 }
+
+// A package pulled in by something else is installed whether or not it was
+// ticked; a list that shows it unticked is lying about the package contents.
+func TestDependenciesAreShownAsSelected(t *testing.T) {
+	u := loaded(t)
+	// vending requires gmscore, so untick vending and tick it again to be sure
+	// the row tracks the resolution rather than the click.
+	u.selected["vending"] = false
+	u.resolve()
+	u.refreshSummary()
+
+	u.selected["vending"] = true
+	u.resolve()
+	u.refreshSummary()
+
+	row, ok := u.rows["gmscore"]
+	if !ok {
+		t.Fatal("no row for gmscore")
+	}
+	if !row.check.Checked {
+		t.Error("a package in the resolution must show as selected")
+	}
+	if row.note.Text != "required" {
+		t.Errorf("a required package should say so, got %q", row.note.Text)
+	}
+}
+
+func TestUntickedPackagesShowTheirSummary(t *testing.T) {
+	u := loaded(t)
+	row := u.rows["dialer-google"]
+	if row.check.Checked {
+		t.Error("dialer-google is not selected by default")
+	}
+	if row.note.Text == "required" {
+		t.Error("an optional package must not claim to be required")
+	}
+}
