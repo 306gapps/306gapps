@@ -25,6 +25,7 @@ import (
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
 	"github.com/306gapps/306gapps/internal/tui"
+	"github.com/306gapps/306gapps/internal/version"
 )
 
 // DefaultSource is the assets repo; -source points at a fork or local mirror.
@@ -60,6 +61,9 @@ func run() error {
 		return cmdCache(args)
 	case "validate":
 		return cmdValidate(args)
+	case "version", "-v", "--version":
+		fmt.Println("306gapps " + version.String())
+		return nil
 	case "help", "-h", "--help":
 		usage()
 		return nil

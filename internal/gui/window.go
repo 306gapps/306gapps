@@ -17,6 +17,7 @@ import (
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/source"
+	"github.com/306gapps/306gapps/internal/version"
 )
 
 // Run opens the picker.
@@ -24,7 +25,7 @@ func Run(ctx context.Context, src *source.Source, outDir string) error {
 	s := newState(ctx, src, outDir)
 
 	a := app.NewWithID("com.306gapps.picker")
-	w := a.NewWindow("306gapps")
+	w := a.NewWindow("306gapps " + version.String())
 	w.Resize(fyne.NewSize(940, 700))
 
 	ui := &window{state: s, win: w}

@@ -1,0 +1,171 @@
+name: release
+
+# Publishes binaries for a tag. The command line is pure Go and cross-compiles
+# from anywhere; the picker needs cgo for the GUI toolkit, so it is built on a
+# runner of the operating system it is for rather than cross-compiled.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version to stamp (no release is published without a tag)"
+        required: false
+        default: "v0.0.0-test"
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      publish: ${{ steps.v.outputs.publish }}
+    steps:
+      - id: v
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The command line: one pure-Go binary per target, no toolchain needed.
+  cli:
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64 }
+          - { goos: linux,   goarch: arm64 }
+          - { goos: windows, goarch: amd64, ext: ".exe" }
+          - { goos: windows, goarch: arm64, ext: ".exe" }
+          - { goos: darwin,  goarch: amd64 }
+          - { goos: darwin,  goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Build
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V" \
+            -o "dist/306gapps-$V-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
+            ./cmd/306gapps
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  # The picker. cgo, so one runner per operating system.
+  gui:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04,  goos: linux,   goarch: amd64 }
+          - { os: windows-latest, goos: windows, goarch: amd64, ext: ".exe" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      # Built on the oldest supported runner so the binary does not require a
+      # newer glibc than the distributions people actually run.
+      - name: GUI toolkit build dependencies
+        if: matrix.goos == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libgl1-mesa-dev xorg-dev
+
+      - name: Build
+        shell: bash
+        env:
+          CGO_ENABLED: "1"
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          mkdir -p dist
+          # -H=windowsgui keeps a console window from opening behind the app.
+          LD="-s -w -X github.com/306gapps/306gapps/internal/version.Version=$V"
+          if [ "${{ matrix.goos }}" = "windows" ]; then LD="$LD -H=windowsgui"; fi
+          go build -trimpath -tags gui -ldflags "$LD" \
+            -o "dist/306gapps-gui-$V-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}" \
+            ./cmd/306gapps-gui
+
+      - name: It runs
+        shell: bash
+        run: |
+          ls -l dist/
+          file dist/* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  publish:
+    needs: [version, cli, gui]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: staging
+      - name: Collect
+        run: |
+          mkdir -p dist
+          find staging -type f -exec mv {} dist/ \;
+          chmod +x dist/* || true
+          ls -l dist/
+
+      # A binary that cannot start is worse than no release at all.
+      - name: The Linux command line runs and reports its version
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          bin="dist/306gapps-$V-linux-amd64"
+          chmod +x "$bin"
+          got=$("$bin" version)
+          echo "$got"
+          [ "$got" = "306gapps $V" ] || { echo "::error::version mismatch: $got"; exit 1; }
+
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ needs.version.outputs.version }}
+          path: dist/
+
+      - name: Publish the release
+        if: needs.version.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          gh release create "$V" dist/* \
+            --title "$V" \
+            --notes "Binaries for Linux, Windows and macOS.
+
+          \`306gapps\` is the command line; \`306gapps-gui\` is the desktop picker.
+          The picker is only built for linux/amd64 and windows/amd64 — it needs
+          the platform's own GUI toolchain, which cannot be cross-compiled.
+
+          Verify a download against \`SHA256SUMS\`."
