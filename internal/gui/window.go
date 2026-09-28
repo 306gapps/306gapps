@@ -86,9 +86,11 @@ type groupRow struct {
 type packageRow struct {
 	check *widget.Check
 	note  *widget.Label
-	// detail holds the whole summary and is shown when the row is clicked.
-	detail *widget.Label
-	pkg    manifest.Package
+	// detail holds the whole summary; expanded is the wrapper that is shown
+	// and hidden, since hiding the label alone still reserves its height.
+	detail   *widget.Label
+	expanded *fyne.Container
+	pkg      manifest.Package
 }
 
 func (u *window) build() fyne.CanvasObject {
@@ -456,7 +458,7 @@ func (u *window) allSelectedIn(members []manifest.Package) bool {
 	return true
 }
 
-func indent(o fyne.CanvasObject) fyne.CanvasObject {
+func indent(o fyne.CanvasObject) *fyne.Container {
 	pad := widget.NewLabel("  ")
 	return container.NewBorder(nil, nil, pad, nil, o)
 }
@@ -501,7 +503,11 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	detail := widget.NewLabel(p.Summary)
 	detail.Wrapping = fyne.TextWrapWord
 	detail.Importance = widget.LowImportance
-	detail.Hide()
+
+	// Hide the wrapper, not the label: a visible wrapper round a hidden label
+	// still reserves a row's worth of height.
+	expanded := indent(detail)
+	expanded.Hide()
 
 	// Expert-only: keeping both the ROM's app and ours is rarely what anyone wants.
 	var trailing fyne.CanvasObject = size
@@ -519,16 +525,18 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 			if p.Summary == "" {
 				return
 			}
-			if detail.Visible() {
-				detail.Hide()
+			if expanded.Visible() {
+				expanded.Hide()
 			} else {
-				detail.Show()
+				expanded.Show()
 			}
+			u.list.Refresh()
 		}), id), trailing, note)
 
-	u.rows[p.ID] = &packageRow{check: check, note: note, detail: detail, pkg: p}
+	u.rows[p.ID] = &packageRow{check: check, note: note,
+		detail: detail, expanded: expanded, pkg: p}
 
-	return container.NewVBox(line, indent(detail))
+	return container.NewVBox(line, expanded)
 }
 
 // refreshRows brings every line back in line with the resolution.

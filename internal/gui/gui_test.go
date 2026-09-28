@@ -606,14 +606,14 @@ func TestClickingARowRevealsTheWholeSummary(t *testing.T) {
 	if row.detail == nil {
 		t.Fatal("no detail label on the row")
 	}
-	if row.detail.Visible() {
+	if row.expanded.Visible() {
 		t.Error("the detail should start hidden")
 	}
 	if row.detail.Text != row.pkg.Summary {
 		t.Errorf("the detail should hold the whole summary, got %q", row.detail.Text)
 	}
-	row.detail.Show()
-	if !row.detail.Visible() {
+	row.expanded.Show()
+	if !row.expanded.Visible() {
 		t.Error("the detail should be showable")
 	}
 }
@@ -722,5 +722,28 @@ func TestExpertFileNameOverride(t *testing.T) {
 		if got := u.zipName("a17-cd1a.260905.001.b1", build.TargetRecovery); got != want {
 			t.Errorf("zipName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// Hiding the label but not its wrapper left every row carrying an empty
+// indented strip, which is what made the list look broken.
+func TestCollapsedRowsReserveNoHeight(t *testing.T) {
+	u := loaded(t)
+	for id, row := range u.rows {
+		if row.expanded == nil {
+			t.Fatalf("%s has no expandable wrapper", id)
+		}
+		if row.expanded.Visible() {
+			t.Errorf("%s starts expanded", id)
+		}
+		if h := row.expanded.MinSize().Height; row.expanded.Visible() && h == 0 {
+			t.Errorf("%s expanded but has no height", id)
+		}
+	}
+	// And expanding one actually gives it height.
+	r := u.rows["vending"]
+	r.expanded.Show()
+	if r.expanded.MinSize().Height == 0 {
+		t.Error("an expanded row should take space")
 	}
 }

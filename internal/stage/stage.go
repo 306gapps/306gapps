@@ -81,6 +81,18 @@ type Options struct {
 
 // Build fetches every payload in the resolution and returns the install plan.
 func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *catalog.Resolution, opt Options) (*Plan, error) {
+	// Serialised here rather than in every caller: the download workers all
+	// call it, and a caller keeping a map of what it has seen would otherwise
+	// hit "concurrent map writes", which is a hard crash rather than an error.
+	if opt.Progress != nil {
+		inner, mu := opt.Progress, new(sync.Mutex)
+		opt.Progress = func(f manifest.File, got, want int64) {
+			mu.Lock()
+			defer mu.Unlock()
+			inner(f, got, want)
+		}
+	}
+
 	workers := opt.Workers
 	if workers <= 0 {
 		workers = 4
