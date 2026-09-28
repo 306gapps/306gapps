@@ -75,6 +75,8 @@ type Options struct {
 	// Workers bounds concurrent downloads. Zero means 4.
 	Workers  int
 	Progress source.Progress
+	// KeepStock names packages whose removals are skipped, leaving the ROM's own app in place.
+	KeepStock []string
 }
 
 // Build fetches every payload in the resolution and returns the install plan.
@@ -150,7 +152,7 @@ func Build(ctx context.Context, src *source.Source, m *manifest.Manifest, res *c
 		Release:  m.Release,
 		Packages: res.Packages,
 		Entries:  entries,
-		Removes:  mergeRemoves(res.Packages),
+		Removes:  mergeRemoves(res.Packages, opt.KeepStock),
 		Props:    props,
 		Size:     res.Size,
 	}
@@ -173,10 +175,17 @@ func mergeProps(pkgs []manifest.Package) (map[string]string, error) {
 	return out, nil
 }
 
-func mergeRemoves(pkgs []manifest.Package) []string {
+func mergeRemoves(pkgs []manifest.Package, keepStock []string) []string {
+	keep := map[string]bool{}
+	for _, id := range keepStock {
+		keep[id] = true
+	}
 	seen := map[string]bool{}
 	var out []string
 	for _, p := range pkgs {
+		if keep[p.ID] {
+			continue
+		}
 		for _, r := range p.Removes {
 			if !seen[r] {
 				seen[r] = true

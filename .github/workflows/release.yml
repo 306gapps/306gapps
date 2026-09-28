@@ -6,6 +6,11 @@ name: release
 on:
   push:
     tags: ["v*"]
+    # A push to dev builds the same six binaries and uploads them as
+    # artifacts. Nothing is published: the publish job is gated on the run
+    # being for a tag, so this is the same pipeline people can test against
+    # rather than a second one that might drift from it.
+    branches: [dev]
   workflow_dispatch:
     inputs:
       tag:
@@ -26,13 +31,20 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       publish: ${{ steps.v.outputs.publish }}
     steps:
+      # Needed for the branch build, which names itself after the commit.
+      - uses: actions/checkout@v4
       - id: v
         run: |
           if [ "${{ github.ref_type }}" = "tag" ]; then
             echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
             echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
+          elif [ -n "${{ inputs.tag }}" ]; then
             echo "version=${{ inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            # A branch build: name it after the branch and the commit, so a
+            # tester can say exactly which build they ran.
+            echo "version=${{ github.ref_name }}-$(git rev-parse --short=12 HEAD)" >> "$GITHUB_OUTPUT"
             echo "publish=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -133,7 +145,10 @@ jobs:
     needs: [version, native, darwin]
     runs-on: ubuntu-latest
     steps:
+      # Full history: the notes are built from the commits since the last tag.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           path: staging
@@ -160,21 +175,34 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: release-${{ needs.version.outputs.version }}
+          name: 306gapps-${{ needs.version.outputs.version }}
           path: dist/
+          retention-days: 30
+
+      # The notes are a template plus the commits since the last tag. Editing
+      # the template is how the standing preamble changes; nobody has to
+      # remember to retype it.
+      - name: Release notes
+        if: needs.version.outputs.publish == 'true'
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          cp .github/release-notes.md notes.md
+          prev=$(git describe --tags --abbrev=0 "$V^" 2>/dev/null || true)
+          if [ -n "$prev" ]; then
+            {
+              git log --no-merges --format='- %s' "$prev..$V"
+              echo ""
+              echo "Full changes: https://github.com/${{ github.repository }}/compare/$prev...$V"
+            } >> notes.md
+          else
+            git log --no-merges --format='- %s' "$V" >> notes.md
+          fi
+          cat notes.md
 
       - name: Publish the release
         if: needs.version.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ needs.version.outputs.version }}
-        run: |
-          gh release create "$V" dist/* \
-            --title "$V" \
-            --notes "Binaries for Linux, Windows and macOS.
-
-          One binary per platform. Run it with no arguments for the desktop
-          picker, or \`306gapps pick\` for the terminal one. macOS builds are
-          command line only.
-
-          Verify a download against \`SHA256SUMS\`."
+        run: gh release create "$V" dist/* --title "$V" --notes-file notes.md
