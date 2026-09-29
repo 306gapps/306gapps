@@ -157,8 +157,75 @@ jobs:
           name: bin-darwin-${{ matrix.goarch }}
           path: dist/
 
+  # Every update has to be signed with the same key or Android refuses to
+  # install it over the last one, so the key is a secret, never generated here.
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: SDK packages
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-37.0" "build-tools;37.0.0" "ndk;29.0.13113456" > /dev/null
+      - run: go install tool
+      - run: android/build-core.sh
+
+      # A branch build without the secret still builds, unsigned. A release
+      # without a signed apk is broken, so a tag refuses to go ahead.
+      - name: Signing key
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          PUBLISH: ${{ needs.version.outputs.publish }}
+        run: |
+          if [ -z "$KEYSTORE" ]; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::ANDROID_KEYSTORE_BASE64 is not set"
+              exit 1
+            fi
+            echo "no signing key; the apk will be unsigned"
+            exit 0
+          fi
+          echo "$KEYSTORE" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "GAPPS_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: android
+        env:
+          GAPPS_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GAPPS_KEY_ALIAS: "306gapps"
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          ./gradlew --console=plain -PgappsVersion="$V" testReleaseUnitTest assembleRelease
+          out=app/build/outputs/apk/release
+          apk="$out/app-release.apk"
+          [ -f "$apk" ] || apk="$out/app-release-unsigned.apk"
+          mkdir -p ../dist
+          cp "$apk" "../dist/306gapps-$V-android-arm64.apk"
+
+      - name: It is what it says
+        env:
+          V: ${{ needs.version.outputs.version }}
+        run: |
+          apk="dist/306gapps-$V-android-arm64.apk"
+          "$ANDROID_HOME/build-tools/37.0.0/aapt2" dump badging "$apk" | head -1
+          if [ -n "${GAPPS_KEYSTORE:-}" ]; then
+            "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$apk"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bin-android-arm64
+          path: dist/
+
   publish:
-    needs: [version, native, darwin]
+    needs: [version, native, darwin, android]
     runs-on: ubuntu-latest
     steps:
       # Full history: the notes are built from the commits since the last tag.
