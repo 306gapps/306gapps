@@ -4,6 +4,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// -PgappsVersion=v0.3.0 from the release workflow, so the apk matches the desktop binaries
+val gappsVersion = (findProperty("gappsVersion") as String?)?.removePrefix("v") ?: "0.0.0-dev"
+// 0.3.0 -> 300. anything that isn't x.y.z (branch builds) gets 1
+val gappsVersionCode = Regex("""^(\d+)\.(\d+)\.(\d+)""").find(gappsVersion)
+    ?.destructured?.let { (a, b, c) -> a.toInt() * 10000 + b.toInt() * 100 + c.toInt() } ?: 1
+
+// release signing only when ci (or you) supplies the keystore; otherwise release builds are unsigned
+val keystore = System.getenv("GAPPS_KEYSTORE")?.let(::file)?.takeIf { it.exists() }
+
 android {
     namespace = "app.gapps306"
     compileSdk = 37
@@ -12,18 +21,30 @@ android {
         applicationId = "app.gapps306"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = gappsVersionCode
+        versionName = gappsVersion
         // core.aar is bound for arm64 only
         ndk { abiFilters += "arm64-v8a" }
     }
 
     buildFeatures { compose = true }
 
+    signingConfigs {
+        if (keystore != null) {
+            create("release") {
+                storeFile = keystore
+                storePassword = System.getenv("GAPPS_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("GAPPS_KEY_ALIAS")
+                keyPassword = System.getenv("GAPPS_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (keystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 
