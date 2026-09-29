@@ -166,6 +166,7 @@ as it was. It also survives OTA updates. Safer, if you have root.
 | `-out` | where to write the zip |
 | `-no-sign` | skip signing |
 | `-wipe-frp` | recovery: also clear factory reset protection while flashing |
+| `-xz` | recovery: force xz compression (smaller zip; slower to build without the `xz` tool) |
 
 Flags go before any other argument.
 

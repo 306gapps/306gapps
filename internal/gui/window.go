@@ -66,6 +66,7 @@ type window struct {
 	ota        *otaForm
 	expertBox  *widget.Check
 	frpBox     *widget.Check
+	xzBox      *widget.Check
 	nameEntry  *widget.Entry
 	expertBar  *fyne.Container
 	importBtn  *widget.Button
@@ -198,12 +199,16 @@ func (u *window) build() fyne.CanvasObject {
 	u.frpBox = widget.NewCheck("Also clear factory reset protection (recovery zip)", func(on bool) {
 		u.state.wipeFRP = on
 	})
+	u.xzBox = widget.NewCheck("Smaller download (xz) — slower to build on Windows", func(on bool) {
+		u.state.forceXZ = on
+	})
 
 	u.expertBar = container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("File name"), nil, u.nameEntry),
 		container.NewBorder(nil, nil, widget.NewLabel("Saved selections"),
 			container.NewHBox(u.importBtn, u.exportBtn, u.deleteBtn), layout.NewSpacer()),
 		u.frpBox,
+		u.xzBox,
 	)
 	u.expertBar.Hide()
 

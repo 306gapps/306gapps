@@ -75,6 +75,10 @@ type Options struct {
 	Busybox string
 	// WipeFRP adds a step that clears factory reset protection during install.
 	WipeFRP bool
+	// ForceXZ compresses recovery payloads with xz even when no system xz tool
+	// is present (falling back to a slower pure-Go encoder). Without it, xz is
+	// used only when the tool is available, so a build never silently crawls.
+	ForceXZ bool
 	// Signing configures the OTA target; ignored by the others.
 	Signing SigningOptions
 	// Progress is called after each file is written.
@@ -202,6 +206,24 @@ func (w *writer) addFile(name, local string, mode os.FileMode) error {
 	}
 	if _, err := io.Copy(dst, src); err != nil {
 		return fmt.Errorf("write %s: %w", name, err)
+	}
+	w.seen[name] = true
+	w.count++
+	return nil
+}
+
+// addXZ stores src as an xz-compressed entry named name (which must end .xz,
+// so header() marks it stored rather than deflated again).
+func (w *writer) addXZ(name string, mode os.FileMode, src io.Reader) error {
+	if w.seen[name] {
+		return fmt.Errorf("duplicate archive entry %q", name)
+	}
+	dst, err := w.zw.CreateHeader(w.header(name, mode))
+	if err != nil {
+		return err
+	}
+	if err := xzCompress(dst, src); err != nil {
+		return fmt.Errorf("compress %s: %w", name, err)
 	}
 	w.seen[name] = true
 	w.count++

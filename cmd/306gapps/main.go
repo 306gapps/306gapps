@@ -381,6 +381,8 @@ func cmdBuild(ctx context.Context, args []string) error {
 		"recovery: do not bundle busybox, use the recovery's own tools")
 	wipeFRP := fs.Bool("wipe-frp", false,
 		"recovery: also clear factory reset protection when flashing")
+	forceXZ := fs.Bool("xz", false,
+		"recovery: force xz compression even without the xz tool (smaller zip, slower build)")
 	noSign := fs.Bool("no-sign", false, "do not sign the package")
 	keyPath := fs.String("key", "", "signing key (PEM); default: a generated one")
 	certPath := fs.String("cert", "", "signing certificate (PEM)")
@@ -509,6 +511,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 		Out:     dest,
 		Busybox: busybox,
 		WipeFRP: *wipeFRP && target == build.TargetRecovery,
+		ForceXZ: *forceXZ && target == build.TargetRecovery,
 		Signing: build.SigningOptions{
 			Base:       *base,
 			KeyDir:     *keys,

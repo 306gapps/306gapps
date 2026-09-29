@@ -1,7 +1,9 @@
 package build
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/306gapps/306gapps/internal/stage"
@@ -60,17 +62,41 @@ func buildRecovery(plan *stage.Plan, w *writer, opt Options) error {
 		}
 	}
 
+	// Payloads are xz-compressed and stored, and the installer decompresses each
+	// as it writes it -- roughly half the size of deflate, with no second copy
+	// on disk. xz is used when a system xz tool is present (fast) or when forced;
+	// otherwise deflate, so a build without the tool (usually Windows) is not
+	// silently slow. The installer keys off installer/compression.
+	useXZ := opt.ForceXZ || systemXZ()
+	if useXZ {
+		if err := w.addBytes("installer/compression", 0o644, []byte("xz\n")); err != nil {
+			return err
+		}
+	}
 	for i, e := range entries {
 		switch {
 		case e.IsSymlink():
 			// Created by the installer from files.list; nothing to carry.
 		case e.IsEmpty():
-			// No payload was published, so carry the empty file itself.
-			if err := w.addBytes("files/"+e.Path, e.Mode, nil); err != nil {
+			if useXZ {
+				if err := w.addXZ("files/"+e.Path+".xz", e.Mode, bytes.NewReader(nil)); err != nil {
+					return err
+				}
+			} else if err := w.addBytes("files/"+e.Path, e.Mode, nil); err != nil {
 				return err
 			}
 		default:
-			if err := w.addFile("files/"+e.Path, e.Local, e.Mode); err != nil {
+			if useXZ {
+				f, err := os.Open(e.Local)
+				if err != nil {
+					return err
+				}
+				err = w.addXZ("files/"+e.Path+".xz", e.Mode, f)
+				f.Close()
+				if err != nil {
+					return err
+				}
+			} else if err := w.addFile("files/"+e.Path, e.Local, e.Mode); err != nil {
 				return err
 			}
 		}

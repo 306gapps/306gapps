@@ -216,7 +216,7 @@ func TestBuildWritesSignedZip(t *testing.T) {
 			t.Errorf("zip lacks %s", want)
 		}
 	}
-	if !slices.ContainsFunc(names, func(n string) bool { return strings.HasSuffix(n, "gsa.apk") }) {
+	if !slices.ContainsFunc(names, func(n string) bool { return strings.HasSuffix(n, "gsa.apk.xz") }) {
 		t.Error("zip lacks the gsa payload")
 	}
 	if s.CacheSize() == 0 {

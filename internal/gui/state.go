@@ -43,6 +43,8 @@ type state struct {
 	outName string
 	// wipeFRP adds a factory-reset-protection wipe to a recovery zip.
 	wipeFRP bool
+	// forceXZ forces xz compression even without a system xz tool (Windows).
+	forceXZ bool
 	// configs holds the user's own saved selections.
 	configs *config.Store
 	// keptLabel is the saved selection currently showing, if any.

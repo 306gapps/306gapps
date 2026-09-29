@@ -2,6 +2,8 @@ package build
 
 import (
 	"archive/zip"
+	"bytes"
+	"github.com/ulikunitz/xz"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,7 +63,7 @@ func TestOTARequiresABase(t *testing.T) {
 func buildTo(t *testing.T, target Target) (string, map[string]string) {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "out.zip")
-	if _, err := Build(testPlan(t), Options{Target: target, Out: out}); err != nil {
+	if _, err := Build(testPlan(t), Options{Target: target, Out: out, ForceXZ: true}); err != nil {
 		t.Fatalf("%s build: %v", target, err)
 	}
 	zr, err := zip.OpenReader(out)
@@ -94,8 +96,8 @@ func TestRecoveryLayout(t *testing.T) {
 		"installer/addon.d.sh",
 		"installer/files.list",
 		"installer/release.txt",
-		"files/product/priv-app/GmsCore/GmsCore.apk",
-		"files/system/priv-app/Setup/Setup.apk",
+		"files/product/priv-app/GmsCore/GmsCore.apk.xz",
+		"files/system/priv-app/Setup/Setup.apk.xz",
 	} {
 		if _, ok := files[want]; !ok {
 			t.Errorf("missing %s", want)
@@ -250,7 +252,8 @@ func TestRecoveryRecordsSymlinksInTheWorkList(t *testing.T) {
 
 	var list string
 	for _, f := range zr.File {
-		if f.Name == "files/product/priv-app/GmsCore/lib/arm64/libjni.so" {
+		if f.Name == "files/product/priv-app/GmsCore/lib/arm64/libjni.so" ||
+			f.Name == "files/product/priv-app/GmsCore/lib/arm64/libjni.so.xz" {
 			t.Error("a symlink must not be carried as a payload")
 		}
 		if f.Name == "installer/files.list" {
@@ -392,18 +395,28 @@ func TestEmptyFilesAreCarriedWithoutAnAsset(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := "files/product/priv-app/GmsCore/GmsCore.apk.prof"
+		want := "files/product/priv-app/GmsCore/GmsCore.apk.prof.xz"
+		xzd := true
 		if target == TargetModule {
 			want = "system/product/priv-app/GmsCore/GmsCore.apk.prof"
+			xzd = false
 		}
 		var found bool
 		for _, f := range zr.File {
-			if f.Name == want {
-				found = true
-				if f.UncompressedSize64 != 0 {
-					t.Errorf("%s: %s should be empty, got %d bytes",
-						target, want, f.UncompressedSize64)
+			if f.Name != want {
+				continue
+			}
+			found = true
+			if xzd {
+				// xz of nothing is a small stream that decompresses to empty.
+				rc, _ := f.Open()
+				b, _ := io.ReadAll(rc)
+				rc.Close()
+				if n := decompressXZLen(t, b); n != 0 {
+					t.Errorf("%s: %s should decompress to empty, got %d bytes", target, want, n)
 				}
+			} else if f.UncompressedSize64 != 0 {
+				t.Errorf("%s: %s should be empty, got %d bytes", target, want, f.UncompressedSize64)
 			}
 		}
 		zr.Close()
@@ -518,5 +531,51 @@ func TestWipeFRPMarkerOnlyWhenAsked(t *testing.T) {
 	}
 	if _, ok := read(Options{WipeFRP: true})["installer/wipe-frp"]; !ok {
 		t.Error("wipe-frp marker missing with WipeFRP")
+	}
+}
+
+// decompressXZLen returns the decompressed length of an xz stream, for tests.
+func decompressXZLen(t *testing.T, b []byte) int {
+	t.Helper()
+	r, err := xz.NewReader(bytes.NewReader(b))
+	if err != nil {
+		t.Fatalf("xz reader: %v", err)
+	}
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("xz read: %v", err)
+	}
+	return len(out)
+}
+
+// Without a system xz and without ForceXZ (the Windows default), payloads are
+// stored with deflate and no compression marker; the installer's plain path
+// then applies.
+func TestRecoveryDeflateWhenNoXZ(t *testing.T) {
+	orig := systemXZ
+	systemXZ = func() bool { return false }
+	defer func() { systemXZ = orig }()
+
+	out := filepath.Join(t.TempDir(), "d.zip")
+	if _, err := Build(testPlan(t), Options{Target: TargetRecovery, Out: out}); err != nil {
+		t.Fatal(err)
+	}
+	zr, err := zip.OpenReader(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer zr.Close()
+	names := map[string]bool{}
+	for _, f := range zr.File {
+		names[f.Name] = true
+	}
+	if names["installer/compression"] {
+		t.Error("deflate build should not carry a compression marker")
+	}
+	if !names["files/product/priv-app/GmsCore/GmsCore.apk"] {
+		t.Error("deflate build should store the plain payload path")
+	}
+	if names["files/product/priv-app/GmsCore/GmsCore.apk.xz"] {
+		t.Error("deflate build should not xz the payload")
 	}
 }

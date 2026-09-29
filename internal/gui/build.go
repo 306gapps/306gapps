@@ -110,6 +110,7 @@ func (u *window) runBuild(report func(string, float64)) (*build.Result, error) {
 	opts := build.Options{
 		Target:  u.state.target,
 		WipeFRP: u.state.wipeFRP && u.state.target == build.TargetRecovery,
+		ForceXZ: u.state.forceXZ && u.state.target == build.TargetRecovery,
 		Out:     out,
 		Busybox: busybox,
 		Progress: func(n, of int) {

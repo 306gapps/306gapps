@@ -182,8 +182,8 @@ func TestEndToEndRecoveryBuild(t *testing.T) {
 		names[f.Name] = true
 	}
 	for _, want := range []string{
-		"files/product/priv-app/gmscore/gmscore.apk",
-		"files/product/priv-app/gsa/gsa.apk",
+		"files/product/priv-app/gmscore/gmscore.apk.xz",
+		"files/product/priv-app/gsa/gsa.apk.xz",
 		"installer/installer.sh",
 	} {
 		if !names[want] {

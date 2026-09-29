@@ -27,6 +27,14 @@ ANDROID=$(sed -n 's/^android=//p' "$TMP/installer/release.txt")
 APILEVEL=$(sed -n 's/^api=//p' "$TMP/installer/release.txt")
 PKGCOUNT=$(sed -n 's/^packages=//p' "$TMP/installer/release.txt")
 
+# Payloads may be xz-compressed (installer/compression). Decompression needs
+# unxz, which the bundled busybox provides; fail early and clearly if it is
+# missing rather than midway through with a size-mismatch.
+COMPRESSION=$(sed -n '1p' "$TMP/installer/compression" 2>/dev/null)
+if [ "$COMPRESSION" = xz ] && ! command -v unxz >/dev/null 2>&1; then
+  abort "this package is xz-compressed but unxz is unavailable in this recovery"
+fi
+
 ui_print "========================================="
 ui_print " $NAME"
 ui_print " release $RELEASE"
@@ -210,8 +218,14 @@ while IFS="$(printf '\t')" read -r rel mode ctx size owner link; do
   # Stream out of the zip onto the destination filesystem so the install never
   # needs room for a second copy, and never fills tmpfs.
   scratch="$target/.306gapps.part"
-  if ! unzip -p "$ZIPFILE" "files/$rel" > "$scratch" 2>/dev/null; then
-    rm -f "$scratch"
+  if [ "$COMPRESSION" = xz ]; then
+    # A failed unzip or unxz leaves a short/garbage file; the size and digest
+    # checks below catch it either way.
+    unzip -p "$ZIPFILE" "files/$rel.xz" 2>/dev/null | unxz > "$scratch" 2>/dev/null
+  else
+    unzip -p "$ZIPFILE" "files/$rel" > "$scratch" 2>/dev/null
+  fi
+  if [ ! -f "$scratch" ]; then
     abort "failed to extract $rel"
   fi
   actual=$(wc -c < "$scratch" | tr -d ' ')
