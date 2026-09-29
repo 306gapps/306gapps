@@ -1,6 +1,7 @@
 package app.gapps306
 
 import android.content.Context
+import android.util.Log
 import app.gapps306.mobile.Mobile
 import app.gapps306.mobile.Progress
 import app.gapps306.mobile.Session
@@ -32,6 +33,8 @@ sealed interface BuildStatus {
  * the ui just watches.
  */
 object Gapps {
+    private const val TAG = "gapps306"
+
     private lateinit var session: Session
     private lateinit var prefs: android.content.SharedPreferences
     lateinit var outDir: File
@@ -67,7 +70,10 @@ object Gapps {
                 if (pick != null) loadRelease(pick.id)
                 else _picker.update { it.copy(loading = false, error = "No releases published yet") }
             }
-            .onFailure { e -> _picker.update { it.copy(loading = false, error = e.message) } }
+            .onFailure { e ->
+                Log.w(TAG, "load failed", e)
+                _picker.update { it.copy(loading = false, error = e.message) }
+            }
     }
 
     suspend fun loadRelease(id: String) = io {
@@ -79,7 +85,10 @@ object Gapps {
                     it.copy(catalog = c, selection = decode(session.state()), loading = false)
                 }
             }
-            .onFailure { e -> _picker.update { it.copy(loading = false, error = e.message) } }
+            .onFailure { e ->
+                Log.w(TAG, "load failed", e)
+                _picker.update { it.copy(loading = false, error = e.message) }
+            }
     }
 
     suspend fun toggle(id: String, on: Boolean) = select { session.toggle(id, on) }
@@ -113,7 +122,10 @@ object Gapps {
         } catch (e: Exception) {
             val msg = e.message.orEmpty()
             if (msg.contains("context canceled")) BuildStatus.Idle
-            else BuildStatus.Failed(msg.ifEmpty { e.toString() })
+            else {
+                Log.w(TAG, "build failed", e)
+                BuildStatus.Failed(msg.ifEmpty { e.toString() })
+            }
         }
     }
 
