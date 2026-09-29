@@ -49,6 +49,7 @@ func fixture(t *testing.T) (*source.Source, source.ReleaseRef) {
 			{ID: "gmscore", Name: "Play services", Group: "core", Required: true,
 				Files: []manifest.File{file("product/priv-app/Gms/Gms.apk", "gms.apk", 1000)}},
 			{ID: "vending", Name: "Play Store", Group: "core", Default: true,
+				Summary:  "Replaces the ROM's first-boot flow. Needed to sign in during setup.",
 				Requires: []string{"gmscore"},
 				Files:    []manifest.File{file("product/priv-app/Phonesky/Phonesky.apk", "v.apk", 2000)}},
 			{ID: "dialer-google", Name: "Google Phone", Group: "apps",
@@ -799,5 +800,29 @@ func TestPreferencesRoundTrip(t *testing.T) {
 	}
 	if other.preferredRelease(a) == "" {
 		t.Error("the release should have been remembered")
+	}
+}
+
+// A collapsed row shows a whole sentence, not a clip. The marker tells you
+// there is more behind it.
+func TestRowNoteStopsAtTheFirstSentence(t *testing.T) {
+	u := loaded(t)
+	long := "Replaces the ROM's first-boot flow. Needed to sign in during setup."
+
+	got := u.rows["vending"].note.Text
+	if got != "Replaces the ROM's first-boot flow. …" {
+		t.Errorf("note = %q, want the first sentence plus a marker", got)
+	}
+	// The full text stays available behind the click.
+	if u.rows["vending"].detail.Text != long {
+		t.Errorf("detail lost text: %q", u.rows["vending"].detail.Text)
+	}
+	// A one-sentence summary gets no marker.
+	if got := u.rows["gmscore"].note.Text; got != "required" {
+		t.Errorf("a required package still says so: %q", got)
+	}
+	one, more := firstSentence("Google Calendar.")
+	if one != "Google Calendar." || more {
+		t.Errorf("a single sentence should not be marked: %q %v", one, more)
 	}
 }

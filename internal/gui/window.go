@@ -588,7 +588,14 @@ func (u *window) refreshRows() {
 		case implied[id]:
 			note = "added as a dependency of " + strings.Join(u.res.Implied[id], ", ")
 		default:
-			note = row.pkg.Summary
+			// One whole sentence, not however much happens to fit before the
+			// label clips. The rest is a click away.
+			note, more := firstSentence(row.pkg.Summary)
+			if more {
+				note += " …"
+			}
+			row.note.SetText(note)
+			continue
 		}
 		row.note.SetText(note)
 	}
