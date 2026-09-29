@@ -203,7 +203,7 @@ jobs:
           GAPPS_KEY_ALIAS: "306gapps"
           V: ${{ needs.version.outputs.version }}
         run: |
-          ./gradlew --console=plain -PgappsVersion="$V" testReleaseUnitTest assembleRelease
+          ./gradlew --console=plain -PgappsVersion="$V" testDebugUnitTest assembleRelease
           out=app/build/outputs/apk/release
           apk="$out/app-release.apk"
           [ -f "$apk" ] || apk="$out/app-release-unsigned.apk"
