@@ -26,6 +26,7 @@ import (
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
 	"github.com/306gapps/306gapps/internal/tui"
+	"github.com/306gapps/306gapps/internal/update"
 	"github.com/306gapps/306gapps/internal/version"
 )
 
@@ -53,6 +54,9 @@ func run() error {
 			return nil
 		case "-v", "--version":
 			fmt.Println("306gapps " + version.String())
+			if rel, newer, err := update.Check(ctx, updateRepo, version.String()); err == nil && newer {
+				fmt.Printf("%s is available: %s\n", rel.Tag, rel.URL)
+			}
 			return nil
 		}
 	}
@@ -85,6 +89,9 @@ func run() error {
 		return cmdValidate(args)
 	case "version":
 		fmt.Println("306gapps " + version.String())
+		if rel, newer, err := update.Check(ctx, updateRepo, version.String()); err == nil && newer {
+			fmt.Printf("%s is available: %s\n", rel.Tag, rel.URL)
+		}
 		return nil
 	case "help":
 		usage()
@@ -94,6 +101,9 @@ func run() error {
 		return fmt.Errorf("unknown command %q", cmd)
 	}
 }
+
+// updateRepo is checked for a newer release.
+const updateRepo = "306gapps/306gapps"
 
 func usage() {
 	fmt.Fprint(os.Stderr, `306gapps - build custom Google apps packages for custom ROMs

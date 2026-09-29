@@ -848,3 +848,17 @@ func TestFooterReportsVersionAndCache(t *testing.T) {
 		t.Skip("cache rejects a bogus digest, as it should")
 	}
 }
+
+// The update link stays hidden unless a newer release exists.
+func TestUpdateLinkHiddenByDefault(t *testing.T) {
+	u := loaded(t)
+	if u.updateLink == nil || u.verLbl == nil {
+		t.Fatal("no footer version widgets")
+	}
+	if u.updateLink.Visible() {
+		t.Error("the update link should start hidden")
+	}
+	if !strings.HasPrefix(u.verLbl.Text, "306gapps ") {
+		t.Errorf("version label reads %q", u.verLbl.Text)
+	}
+}

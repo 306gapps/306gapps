@@ -7,15 +7,24 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/widget"
+	"github.com/306gapps/306gapps/internal/update"
+	"net/url"
 
 	"github.com/306gapps/306gapps/internal/version"
 )
 
 // footer is the status line: which build this is, and what the payload cache
 // is costing on disk.
+// Repo is checked for a newer release.
+const Repo = "306gapps/306gapps"
+
 func (u *window) footer() fyne.CanvasObject {
-	ver := widget.NewLabel("306gapps " + version.String())
-	ver.Importance = widget.LowImportance
+	u.verLbl = widget.NewLabel("306gapps " + version.String())
+	u.verLbl.Importance = widget.LowImportance
+
+	// Replaces the version label when a newer release exists.
+	u.updateLink = widget.NewHyperlink("", nil)
+	u.updateLink.Hide()
 
 	u.cacheLbl = widget.NewLabel("")
 	u.cacheLbl.Importance = widget.LowImportance
@@ -24,8 +33,28 @@ func (u *window) footer() fyne.CanvasObject {
 	u.clearBtn.Importance = widget.LowImportance
 
 	u.refreshCache()
-	return container.NewBorder(nil, nil, ver,
+	go u.checkForUpdate()
+	return container.NewBorder(nil, nil,
+		container.NewHBox(u.verLbl, u.updateLink),
 		container.NewHBox(u.cacheLbl, u.clearBtn), nil)
+}
+
+// checkForUpdate asks GitHub once at startup. Failure is silence: not being
+// able to reach GitHub is not something to interrupt anyone about.
+func (u *window) checkForUpdate() {
+	rel, newer, err := update.Check(u.ctx, Repo, version.String())
+	if err != nil || !newer {
+		return
+	}
+	link, err := url.Parse(rel.URL)
+	if err != nil {
+		return
+	}
+	fyne.Do(func() {
+		u.updateLink.SetText(rel.Tag + " available")
+		u.updateLink.SetURL(link)
+		u.updateLink.Show()
+	})
 }
 
 // refreshCache measures the cache. Done inline: it holds a few hundred large

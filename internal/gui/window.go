@@ -66,6 +66,8 @@ type window struct {
 	exportBtn  *widget.Button
 	deleteBtn  *widget.Button
 	outEntry   *widget.Entry
+	verLbl     *widget.Label
+	updateLink *widget.Hyperlink
 	cacheLbl   *widget.Label
 	clearBtn   *widget.Button
 	buildBtn   *widget.Button
