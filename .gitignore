@@ -5,3 +5,6 @@
 
 # Generated at build time for the Windows executable icon.
 cmd/306gapps/rsrc.syso
+
+# local build
+/306gapps
