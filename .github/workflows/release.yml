@@ -195,9 +195,9 @@ jobs:
           path: dist/
           retention-days: 30
 
-      # The notes are a template plus the commits since the last tag. Editing
-      # the template is how the standing preamble changes; nobody has to
-      # remember to retype it.
+      # The notes are the template plus either a written changelog for the tag
+      # or, failing that, the commit subjects since the last one. Editing the
+      # template is how the standing preamble changes.
       - name: Release notes
         if: needs.version.outputs.publish == 'true'
         env:
@@ -205,7 +205,13 @@ jobs:
         run: |
           cp .github/release-notes.md notes.md
           prev=$(git describe --tags --abbrev=0 "$V^" 2>/dev/null || true)
-          if [ -n "$prev" ]; then
+          if [ -f ".github/changelog/$V.md" ]; then
+            cat ".github/changelog/$V.md" >> notes.md
+            if [ -n "$prev" ]; then
+              echo ""
+              echo "Full changes: https://github.com/${{ github.repository }}/compare/$prev...$V"
+            fi >> notes.md
+          elif [ -n "$prev" ]; then
             {
               git log --no-merges --format='- %s' "$prev..$V"
               echo ""
