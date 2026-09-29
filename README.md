@@ -22,6 +22,7 @@ Grab a binary from [releases](https://github.com/306gapps/306gapps/releases).
 | Windows, ARM | `306gapps-<version>-windows-arm64.exe` |
 | macOS, Apple Silicon | `306gapps-<version>-darwin-arm64` |
 | macOS, Intel | `306gapps-<version>-darwin-amd64` |
+| Android phone | `306gapps-<version>-android-arm64.apk` |
 
 `SHA256SUMS` is there if you want to check the download.
 
@@ -35,6 +36,11 @@ chmod +x 306gapps-*
 one. **macOS** builds are terminal only. The Linux window picker needs glibc
 2.34 or newer, which means Ubuntu 22.04+, Debian 12+, Fedora 35+ or similar;
 the terminal picker works anywhere.
+
+**Android** builds recovery zips only, no module or OTA target yet. Install
+the apk, pick a release and apps, tap Build, then save the zip somewhere your
+recovery can read. The build keeps going if you leave the app; a notification
+shows progress. Android 9 or newer, 64-bit ARM.
 
 ## Getting a package
 
