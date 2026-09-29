@@ -42,6 +42,7 @@ data class Package(
     val summary: String = "",
     val size: Long,
     val required: Boolean = false,
+    val experimental: Boolean = false,
 )
 
 @Serializable

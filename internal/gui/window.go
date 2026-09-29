@@ -65,6 +65,7 @@ type window struct {
 	target     *widget.Select
 	ota        *otaForm
 	expertBox  *widget.Check
+	frpBox     *widget.Check
 	nameEntry  *widget.Entry
 	expertBar  *fyne.Container
 	importBtn  *widget.Button
@@ -194,10 +195,15 @@ func (u *window) build() fyne.CanvasObject {
 		u.refreshSummary()
 	}
 
+	u.frpBox = widget.NewCheck("Also clear factory reset protection (recovery zip)", func(on bool) {
+		u.state.wipeFRP = on
+	})
+
 	u.expertBar = container.NewVBox(
 		container.NewBorder(nil, nil, widget.NewLabel("File name"), nil, u.nameEntry),
 		container.NewBorder(nil, nil, widget.NewLabel("Saved selections"),
 			container.NewHBox(u.importBtn, u.exportBtn, u.deleteBtn), layout.NewSpacer()),
+		u.frpBox,
 	)
 	u.expertBar.Hide()
 
@@ -522,6 +528,12 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	name := widget.NewLabel(p.Name)
 	id := widget.NewLabel(p.ID)
 	id.Importance = widget.LowImportance
+	var nameCell fyne.CanvasObject = name
+	if p.Experimental {
+		tag := widget.NewLabel("experimental")
+		tag.Importance = widget.WarningImportance
+		nameCell = container.NewHBox(name, tag)
+	}
 	size := widget.NewLabel(humanSize(p.Size()))
 	size.Alignment = fyne.TextAlignTrailing
 
@@ -553,7 +565,7 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	}
 
 	line := container.NewBorder(nil, nil,
-		container.NewHBox(check, newTappable(name, func() {
+		container.NewHBox(check, newTappable(nameCell, func() {
 			if p.Summary == "" {
 				return
 			}

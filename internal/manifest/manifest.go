@@ -90,6 +90,8 @@ type Package struct {
 	Required bool `json:"required,omitempty"`
 	// Default packages start selected.
 	Default bool `json:"default,omitempty"`
+	// Experimental packages carry a warning; the summary says what is wrong.
+	Experimental bool `json:"experimental,omitempty"`
 
 	Requires  []string `json:"requires,omitempty"`
 	Conflicts []string `json:"conflicts,omitempty"`

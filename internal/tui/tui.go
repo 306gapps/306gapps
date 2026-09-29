@@ -487,6 +487,9 @@ func (m *Model) viewPackages() string {
 			prefix = cursorOn.Render("> ")
 			line = cursorOn.Render(line)
 		}
+		if r.pkg.Experimental {
+			line += " " + warn.Render("(experimental)")
+		}
 		b.WriteString(prefix + line + "\n")
 	}
 

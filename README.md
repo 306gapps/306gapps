@@ -165,8 +165,13 @@ as it was. It also survives OTA updates. Safer, if you have root.
 | `-target` | `recovery`, `module`, or `ota` |
 | `-out` | where to write the zip |
 | `-no-sign` | skip signing |
+| `-wipe-frp` | recovery: also clear factory reset protection while flashing |
 
 Flags go before any other argument.
+
+Some apps are marked **experimental** in the picker and in `list`: they work on
+most devices but have a known problem on some. The app's own note says what it
+is. They stay selectable so you can try them.
 
 ## Undoing an install
 

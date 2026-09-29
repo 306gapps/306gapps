@@ -41,6 +41,8 @@ type state struct {
 	keepStock map[string]bool
 	// outName overrides the generated zip name.
 	outName string
+	// wipeFRP adds a factory-reset-protection wipe to a recovery zip.
+	wipeFRP bool
 	// configs holds the user's own saved selections.
 	configs *config.Store
 	// keptLabel is the saved selection currently showing, if any.

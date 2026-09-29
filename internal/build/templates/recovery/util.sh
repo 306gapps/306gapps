@@ -194,6 +194,83 @@ mount_reason() {
   return 0
 }
 
+# Clear factory reset protection.
+#
+# Opt-in: installer.sh only calls this when the zip carries installer/wipe-frp.
+# Prefers the recovery's own wipe-frp binary and falls back to writing the FRP
+# block directly, the way the LineageOS tool does. Never fails the install --
+# a gapps flash should still finish if FRP cannot be cleared.
+wipe_frp() {
+  block=${1:-$(getprop ro.frp.pst 2>/dev/null)}
+  if [ -z "$block" ]; then
+    ui_print "  . no FRP partition on this device"
+    return 0
+  fi
+  if [ ! -b "$block" ]; then
+    ui_print "  . FRP: $block is not a block device, skipping"
+    return 0
+  fi
+  blockdev --setrw "$block" 2>/dev/null
+
+  # The vendor's own tool is tested against this device; use it when present.
+  for tool in wipe-frp /system/bin/wipe-frp /vendor/bin/wipe-frp /sbin/wipe-frp /bin/wipe-frp; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      if "$tool" "$block" >/dev/null 2>&1; then
+        ui_print "  . FRP cleared"
+        return 0
+      fi
+      break
+    fi
+  done
+
+  frp_wipe_block "$block"
+}
+
+# Zero the FRP structure and rewrite its digest, matching LineageOS wipe-frp.
+frp_wipe_block() {
+  block=$1
+  size=$(blockdev --getsize64 "$block" 2>/dev/null)
+  case "$size" in
+    ''|*[!0-9]*) ui_print "  . FRP: cannot read the size of $block, skipping"; return 0 ;;
+  esac
+  # An FRP partition is small. Refuse anything outside a sane range so a
+  # mis-set ro.frp.pst cannot zero a real partition.
+  if [ "$size" -lt 12000 ] || [ "$size" -gt 16777216 ]; then
+    ui_print "  . FRP: $block is $size bytes, outside the expected range; skipping"
+    return 0
+  fi
+
+  digest_size=32
+  oem_off=$((size - 1))
+  cred_size=1000;  cred_off=$((oem_off - cred_size))
+  test_size=10000; test_off=$((cred_off - test_size))
+  secret_size=32;  secret_off=$((test_off - secret_size))
+  magic_size=8;    magic_off=$((secret_off - magic_size))
+
+  # conv=notrunc: harmless on a block device, and it stops dd truncating a
+  # regular file, which is what the tests run against.
+  dd if=/dev/zero of="$block" bs=1 seek=0 count="$digest_size" conv=notrunc 2>/dev/null
+  dd if=/dev/zero of="$block" bs=1 seek="$cred_off" count="$cred_size" conv=notrunc 2>/dev/null
+  dd if=/dev/zero of="$block" bs=1 seek="$secret_off" count="$secret_size" conv=notrunc 2>/dev/null
+  printf '\xDA\xC2\xFC\xCD\xB9\x1B\x09\x88' |
+    dd of="$block" bs=1 seek="$magic_off" count="$magic_size" conv=notrunc 2>/dev/null
+
+  # Rewrite the digest over the whole, now-modified block. No xxd in the
+  # bundled busybox, so turn the hex into printf \x escapes by hand.
+  # shellcheck disable=SC2046  # deliberately split "<hex>  <file>" to take the hex
+  set -- $(sha256sum "$block" 2>/dev/null)
+  hex=$1
+  if [ ${#hex} -ne 64 ]; then
+    ui_print "  . FRP: could not compute the digest; left cleared without it"
+    return 0
+  fi
+  esc=$(printf '%s' "$hex" | sed 's/\(..\)/\\x\1/g')
+  # shellcheck disable=SC2059  # esc is our own hex, not user input
+  printf "$esc" | dd of="$block" bs=1 seek=0 count="$digest_size" conv=notrunc 2>/dev/null
+  ui_print "  . FRP cleared"
+  return 0
+}
+
 # Free bytes on the filesystem holding $1.
 free_bytes() {
   # $(NF-2) rather than $4: busybox df puts a long device name on a line of

@@ -168,6 +168,52 @@ case "$(mount_reason /nosuch)" in
 esac
 check "a missing partition names what was searched" "$r" "missing"
 
+
+# frp_wipe_block zeros the FRP structure and rewrites its digest. It writes a
+# raw partition, so the range guard and the digest have to be exactly right.
+echo "== frp_wipe_block =="
+eval "$(sed -n '/^frp_wipe_block()/,/^}/p' "$UTIL")"
+
+# stub the device-only helper; ui_print already goes nowhere useful here
+blockdev() { case "$1" in --getsize64) stat -c %s "$2" ;; --setrw) : ;; esac; }
+ui_print() { :; }
+
+FRP="$WORK/frp.img"
+python3 -c "open('$FRP','wb').write(b'\xff'*524288)"
+frp_wipe_block "$FRP"
+
+python3 - "$FRP" > "$WORK/frp.check" <<'PYEOF'
+import sys, hashlib
+d = bytearray(open(sys.argv[1],'rb').read())
+n = len(d); oem = n-1; cred = oem-1000; test = cred-10000
+secret = test-32; magic = secret-8
+probe = bytearray(d); probe[0:32] = b'\x00'*32
+print("magic=" + d[magic:magic+8].hex())
+print("secret=" + ("zero" if set(d[secret:secret+32])=={0} else "nonzero"))
+print("cred=" + ("zero" if set(d[cred:cred+1000])=={0} else "nonzero"))
+print("digest=" + ("valid" if bytes(d[0:32])==hashlib.sha256(probe).digest() else "invalid"))
+PYEOF
+. "$WORK/frp.check"
+check "magic bytes written"    "$magic"  "dac2fccdb91b0988"
+check "secret region zeroed"   "$secret" "zero"
+check "credential region zeroed" "$cred" "zero"
+check "digest recomputed valid" "$digest" "valid"
+
+# A partition outside the FRP size range must be left untouched, so a mis-set
+# ro.frp.pst cannot zero something real.
+BIG="$WORK/big.img"
+python3 -c "open('$BIG','wb').write(b'\xaa'*(20*1024*1024))"
+before=$(sha256sum "$BIG" | cut -d' ' -f1)
+frp_wipe_block "$BIG"
+after=$(sha256sum "$BIG" | cut -d' ' -f1)
+check "20MB block left untouched" "$before" "$after"
+
+TINY="$WORK/tiny.img"
+python3 -c "open('$TINY','wb').write(b'\xaa'*4096)"
+b2=$(sha256sum "$TINY" | cut -d' ' -f1); frp_wipe_block "$TINY"
+a2=$(sha256sum "$TINY" | cut -d' ' -f1)
+check "4KB block left untouched" "$b2" "$a2"
+
 echo
 [ "$fail" = 0 ] && echo "all util assertions passed" || echo "FAILURES"
 exit $fail

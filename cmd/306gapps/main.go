@@ -278,6 +278,9 @@ func cmdList(ctx context.Context, args []string) error {
 		if p.Default {
 			flags = append(flags, "default")
 		}
+		if p.Experimental {
+			flags = append(flags, "experimental")
+		}
 		if len(p.Requires) > 0 {
 			flags = append(flags, "needs:"+strings.Join(p.Requires, "+"))
 		}
@@ -373,6 +376,8 @@ func cmdBuild(ctx context.Context, args []string) error {
 	grow := fs.Bool("ota-grow", false, "ota: raise a partition's size budget if the selection overflows it")
 	noBusybox := fs.Bool("no-busybox", false,
 		"recovery: do not bundle busybox, use the recovery's own tools")
+	wipeFRP := fs.Bool("wipe-frp", false,
+		"recovery: also clear factory reset protection when flashing")
 	noSign := fs.Bool("no-sign", false, "do not sign the package")
 	keyPath := fs.String("key", "", "signing key (PEM); default: a generated one")
 	certPath := fs.String("cert", "", "signing certificate (PEM)")
@@ -500,6 +505,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 		Target:  target,
 		Out:     dest,
 		Busybox: busybox,
+		WipeFRP: *wipeFRP && target == build.TargetRecovery,
 		Signing: build.SigningOptions{
 			Base:       *base,
 			KeyDir:     *keys,

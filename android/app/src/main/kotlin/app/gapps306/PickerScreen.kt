@@ -268,7 +268,14 @@ private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, o
     ) {
         Checkbox(checked = on, enabled = !p.required, onCheckedChange = onSet)
         Column(Modifier.weight(1f)) {
-            Text(p.name, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(p.name, style = MaterialTheme.typography.bodyLarge)
+                if (p.experimental) {
+                    Spacer(Modifier.width(6.dp))
+                    Text("experimental", style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.error)
+                }
+            }
             val note = if (expanded && !p.required && !implied) p.summary else packageNote(p, sel, names)
             if (note.isNotEmpty()) {
                 Text(

@@ -73,6 +73,8 @@ type Options struct {
 	// Busybox is an optional static binary bundled with the recovery installer so
 	// it runs against one known toolset instead of whatever the recovery provides.
 	Busybox string
+	// WipeFRP adds a step that clears factory reset protection during install.
+	WipeFRP bool
 	// Signing configures the OTA target; ignored by the others.
 	Signing SigningOptions
 	// Progress is called after each file is written.

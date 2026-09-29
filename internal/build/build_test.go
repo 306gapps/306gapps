@@ -494,3 +494,29 @@ func TestScriptsHaveUnixLineEndings(t *testing.T) {
 		}
 	}
 }
+
+func TestWipeFRPMarkerOnlyWhenAsked(t *testing.T) {
+	read := func(opt Options) map[string]string {
+		opt.Out = filepath.Join(t.TempDir(), "out.zip")
+		opt.Target = TargetRecovery
+		if _, err := Build(testPlan(t), opt); err != nil {
+			t.Fatal(err)
+		}
+		zr, err := zip.OpenReader(opt.Out)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer zr.Close()
+		out := map[string]string{}
+		for _, f := range zr.File {
+			out[f.Name] = ""
+		}
+		return out
+	}
+	if _, ok := read(Options{})["installer/wipe-frp"]; ok {
+		t.Error("wipe-frp marker present without WipeFRP")
+	}
+	if _, ok := read(Options{WipeFRP: true})["installer/wipe-frp"]; !ok {
+		t.Error("wipe-frp marker missing with WipeFRP")
+	}
+}

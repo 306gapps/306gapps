@@ -270,6 +270,13 @@ for f in files.list release.txt packages.txt; do
     set_meta "$SYSROOT/etc/306gapps/$f" 0644 "u:object_r:system_file:s0"
 done
 
+# ---- clear factory reset protection (opt-in) -------------------------------
+
+if [ -f "$TMP/installer/wipe-frp" ]; then
+  ui_print "- clearing factory reset protection"
+  wipe_frp
+fi
+
 # ---- wipe the caches -------------------------------------------------------
 
 # Newly installed apks have to be recompiled, and a stale dalvik cache is the
