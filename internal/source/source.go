@@ -143,15 +143,7 @@ func (s *Source) open(ctx context.Context, ref string) (io.ReadCloser, int64, er
 			return nil, 0, err
 		}
 		req.Header.Set("User-Agent", "306gapps")
-		resp, err := s.Client.Do(req)
-		if err != nil {
-			return nil, 0, err
-		}
-		if resp.StatusCode != http.StatusOK {
-			resp.Body.Close()
-			return nil, 0, fmt.Errorf("fetch %s: %s", loc, resp.Status)
-		}
-		return resp.Body, resp.ContentLength, nil
+		return s.get(ctx, req, loc)
 	}
 	loc = strings.TrimPrefix(loc, "file://")
 	f, err := os.Open(loc)
@@ -164,6 +156,47 @@ func (s *Source) open(ctx context.Context, ref string) (io.ReadCloser, int64, er
 		return nil, 0, err
 	}
 	return f, st.Size(), nil
+}
+
+// Attempts per request, and how long to wait before each retry.
+var backoff = []time.Duration{time.Second, 2 * time.Second, 4 * time.Second}
+
+// retryable reports whether another attempt is worth making. GitHub serves
+// release assets with intermittent 5xx, and a build fetches a hundred-odd
+// files, so one bad response used to end the whole thing.
+func retryable(code int) bool {
+	return code >= 500 || code == http.StatusRequestTimeout ||
+		code == http.StatusTooManyRequests
+}
+
+func (s *Source) get(ctx context.Context, req *http.Request, loc string) (io.ReadCloser, int64, error) {
+	var last error
+	for attempt := 0; ; attempt++ {
+		resp, err := s.Client.Do(req.Clone(ctx))
+		switch {
+		case err != nil:
+			last = err
+		case resp.StatusCode == http.StatusOK:
+			return resp.Body, resp.ContentLength, nil
+		default:
+			resp.Body.Close()
+			last = fmt.Errorf("fetch %s: %s", loc, resp.Status)
+			if !retryable(resp.StatusCode) {
+				return nil, 0, last
+			}
+		}
+		if ctx.Err() != nil {
+			return nil, 0, ctx.Err()
+		}
+		if attempt >= len(backoff) {
+			return nil, 0, fmt.Errorf("%w (%d attempts)", last, attempt+1)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, 0, ctx.Err()
+		case <-time.After(backoff[attempt]):
+		}
+	}
 }
 
 // Index fetches and validates the release catalogue.
