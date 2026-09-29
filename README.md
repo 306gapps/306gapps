@@ -71,7 +71,9 @@ Apps are grouped into families. Ticking one app may pull in others it needs, and
 the picker shows you when that happens rather than surprising you later. Some
 apps cannot be turned off because everything else depends on them.
 
-There are presets if you do not want to choose individually:
+There are presets if you do not want to choose individually. They ship with
+the tool rather than with each release, so a preset can be corrected without
+re-publishing anything:
 
 | preset | what you get |
 | --- | --- |
@@ -81,6 +83,11 @@ There are presets if you do not want to choose individually:
 | `stock` | roughly what a Pixel ships with |
 | `full` | stock plus the rest |
 | `everything` | every package in the release |
+| `crdroid` | crDroid's official set, from the ROM's own config |
+| `crdroid-full` | crDroid's full official set |
+
+A preset only ever names packages; anything a given release does not ship is
+dropped rather than failing.
 
 ### The terminal picker
 

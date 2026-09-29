@@ -15,6 +15,7 @@ import (
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/catalog"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/presets"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
 )
@@ -138,6 +139,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case manifestMsg:
 		m.cat = catalog.New(msg.m)
+		presets.Apply(m.ctx, m.src, m.cat)
 		m.buildRows()
 		for _, id := range m.cat.Defaults() {
 			m.selected[id] = true

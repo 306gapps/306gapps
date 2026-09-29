@@ -1,0 +1,78 @@
+# Preset selections, shipped with the app so one can be corrected without
+# re-dumping every release. A tier names only what it adds to the one it
+# includes; ids a release does not ship are dropped when these are resolved.
+#
+# The crdroid tiers are crDroid's own NikGApps configs. Do not edit them by
+# hand: they come from reference/nikgapps in the assets repo, where a test
+# derives them from the config files themselves.
+#
+# To correct a preset for people who have already installed the app, publish
+# this file as presets.json at the root of the assets repo; it supersedes what
+# is compiled in. Delete it again once a release carries the fix, or it will
+# go on overriding presets that have since improved.
+schema: 1
+variants:
+  - id: core
+    name: Core
+    summary: >-
+      Play services, the Store, and the framework. The smallest thing that
+      signs in and installs apps.
+    packages: [gmscore, gsf, vending, syncadapters]
+
+  - id: basic
+    name: Basic
+    summary: >-
+      Core plus the phone, messaging and contacts apps.
+    includes: core
+    packages: [dialer, messages, contacts, carriersetup, clock, wellbeing]
+
+  - id: omni
+    name: Omni
+    summary: >-
+      Basic plus setup, the keyboard, and the everyday Google apps.
+    includes: basic
+    packages: [setupwizard, restore, gboard, calendar, keep, calculator,
+               drive, maps, locationhistory, photos]
+
+  - id: stock
+    name: Stock
+    summary: >-
+      What a Pixel ships with, near enough.
+    includes: omni
+    packages: [gsa, gemini, pixellauncher, files, documentsui,
+               storagemanager, recorder, markup, tts, sounds]
+
+  - id: full
+    name: Full
+    summary: >-
+      Stock plus the rest of what NikGApps packages.
+    includes: stock
+    packages: [gmail, feedback, partnersetup, devicepolicy, androidauto]
+
+  - id: everything
+    name: Everything
+    summary: >-
+      Every package in the release. Where two cannot coexist the first is
+      taken, so this is a starting point rather than literally everything.
+    all: true
+
+  - id: crdroid
+    name: crDroid official
+    summary: >-
+      What crDroid ships as its official package. Maintained by the ROM.
+    packages: [aiai, androidauto, gemini, gmscore, gsa, gsf, markup,
+               restore, setupwizard, sounds, syncadapters, trichrome, tts,
+               vending, webview, wellbeing]
+
+  - id: crdroid-full
+    name: crDroid official full
+    summary: >-
+      crDroid's full official selection, adding the everyday Google apps.
+    packages: [aiai, aicore, androidauto, calculator, calendar,
+               carriersetup, chrome, clock, contacts, devicepolicy, dialer,
+               documentsui, drive, feedback, files, gboard, gemini, gmail,
+               gmscore, gsa, gsf, keep, locationhistory, maps, markup,
+               messages, partnersetup, photos, recorder, restore,
+               setupwizard, sounds, storagemanager, syncadapters,
+               trichrome, tts, vending, webview, wellbeing]
+

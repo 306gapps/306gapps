@@ -22,6 +22,7 @@ import (
 	"github.com/306gapps/306gapps/internal/catalog"
 	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/presets"
 	"github.com/306gapps/306gapps/internal/sign"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
@@ -402,6 +403,7 @@ func cmdBuild(ctx context.Context, args []string) error {
 	}
 
 	c := catalog.New(m)
+	presets.Apply(ctx, s, c)
 	sel := c.Defaults()
 	var keepStock []string
 	if *confName != "" {

@@ -10,12 +10,26 @@ import (
 )
 
 type Catalog struct {
-	m   *manifest.Manifest
-	idx map[string]manifest.Package
+	m        *manifest.Manifest
+	idx      map[string]manifest.Package
+	variants []manifest.Variant
 }
 
 func New(m *manifest.Manifest) *Catalog {
-	return &Catalog{m: m, idx: m.Index()}
+	return &Catalog{m: m, idx: m.Index(), variants: m.Variants}
+}
+
+// SetVariants replaces the manifest's presets with the ones the app ships.
+// Older manifests carry their own, which older builds still read.
+func (c *Catalog) SetVariants(v []manifest.Variant) { c.variants = v }
+
+// Order is the manifest's package order, which presets resolve against.
+func (c *Catalog) Order() []string {
+	out := make([]string, len(c.m.Packages))
+	for i, p := range c.m.Packages {
+		out[i] = p.ID
+	}
+	return out
 }
 
 func (c *Catalog) Manifest() *manifest.Manifest { return c.m }
@@ -60,7 +74,7 @@ func (c *Catalog) Groups() []manifest.Group {
 // Variants returns the presets, keeping only ones with something to select.
 func (c *Catalog) Variants() []manifest.Variant {
 	var out []manifest.Variant
-	for _, v := range c.m.Variants {
+	for _, v := range c.variants {
 		if len(c.Prune(v.Packages)) > 0 {
 			out = append(out, v)
 		}
@@ -70,7 +84,7 @@ func (c *Catalog) Variants() []manifest.Variant {
 
 // Variant returns a preset by id.
 func (c *Catalog) Variant(id string) (manifest.Variant, bool) {
-	for _, v := range c.m.Variants {
+	for _, v := range c.variants {
 		if v.ID == id {
 			return v, true
 		}

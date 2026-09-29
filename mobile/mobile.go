@@ -20,6 +20,7 @@ import (
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/catalog"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/presets"
 	"github.com/306gapps/306gapps/internal/sign"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/stage"
@@ -137,6 +138,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 		return "", err
 	}
 	cat := catalog.New(m)
+	presets.Apply(context.Background(), s.src, cat)
 
 	s.mu.Lock()
 	s.cat = cat

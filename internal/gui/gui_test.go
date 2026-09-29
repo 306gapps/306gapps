@@ -17,6 +17,7 @@ import (
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/presets"
 	"github.com/306gapps/306gapps/internal/source"
 )
 
@@ -70,6 +71,16 @@ func fixture(t *testing.T) (*source.Source, source.ReleaseRef) {
 		}
 	}
 	write("manifest.json", m)
+	// The app ships its own presets; a copy here supersedes them, which is
+	// what lets these tests name packages that only exist in the fixture.
+	write("presets.json", map[string]any{
+		"schema": presets.Schema,
+		"variants": []map[string]any{
+			{"id": "core", "name": "Core", "packages": []string{"gmscore", "vending"}},
+			{"id": "full", "name": "Full", "packages": []string{
+				"gmscore", "vending", "dialer-google", "dialer-aosp"}},
+		},
+	})
 	ref := source.ReleaseRef{ID: m.Release.ID, Android: m.Release.Android,
 		Manifest: "manifest.json", AssetBase: "assets"}
 	write("index.json", source.Index{Schema: source.IndexSchema,

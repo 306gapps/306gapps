@@ -199,6 +199,11 @@ func (s *Source) get(ctx context.Context, req *http.Request, loc string) (io.Rea
 	}
 }
 
+// Open returns a reader for a path relative to the source root.
+func (s *Source) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
+	return s.open(ctx, ref)
+}
+
 // Index fetches and validates the release catalogue.
 func (s *Source) Index(ctx context.Context) (*Index, error) {
 	rc, _, err := s.open(ctx, "index.json")

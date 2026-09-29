@@ -15,6 +15,7 @@ import (
 	"github.com/306gapps/306gapps/internal/catalog"
 	"github.com/306gapps/306gapps/internal/config"
 	"github.com/306gapps/306gapps/internal/manifest"
+	"github.com/306gapps/306gapps/internal/presets"
 	"github.com/306gapps/306gapps/internal/source"
 )
 
@@ -74,6 +75,7 @@ func (s *state) loadRelease(ref source.ReleaseRef) error {
 	}
 	s.release = ref
 	s.cat = catalog.New(m)
+	presets.Apply(s.ctx, s.src, s.cat)
 	s.selected = map[string]bool{}
 	for _, id := range s.cat.Defaults() {
 		s.selected[id] = true
