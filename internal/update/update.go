@@ -22,6 +22,7 @@ type Release struct {
 type Asset struct {
 	Name string `json:"name"`
 	URL  string `json:"browser_download_url"`
+	Size int64  `json:"size"`
 }
 
 // Asset returns the published file whose name ends in suffix.

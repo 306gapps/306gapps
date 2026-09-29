@@ -39,7 +39,7 @@ func CheckUpdate(current string) (string, error) {
 	if !ok {
 		return "", nil
 	}
-	return marshal(updateJSON{Version: rel.Tag, Page: rel.URL, APK: asset.URL})
+	return marshal(updateJSON{Version: rel.Tag, Page: rel.URL, APK: asset.URL, Size: asset.Size})
 }
 
 // DownloadUpdate writes the apk to dir and returns the path.
