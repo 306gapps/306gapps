@@ -52,38 +52,45 @@ find_slot() {
     [ -z "$slot" ] && slot=$(grep -o 'androidboot.slot=[^ ]*' /proc/cmdline 2>/dev/null | cut -d= -f2)
     [ -n "$slot" ] && slot=_$slot
   fi
+  # Neither the property nor the command line is guaranteed in recovery. What
+  # recovery has already mounted from super names the active slot, and picking
+  # the wrong one would write to the slot the phone is not booting.
+  if [ -z "$slot" ]; then
+    case $(grep -o '/dev/block/mapper/[a-z_]*_[ab] ' /proc/mounts 2>/dev/null | head -n1) in
+      *_a\ ) slot=_a ;;
+      *_b\ ) slot=_b ;;
+    esac
+  fi
   echo "$slot"
 }
 
-# Block device path prefix: dynamic partitions live under the device mapper.
-block_path() {
-  if [ -d /dev/block/mapper ]; then
-    echo /dev/block/mapper
-  elif [ -d /dev/block/bootdevice/by-name ]; then
-    echo /dev/block/bootdevice/by-name
-  else
-    find /dev/block/platform -type d -name by-name 2>/dev/null | head -n1
-  fi
+# Every directory that may hold a partition by name, most specific first.
+#
+# This used to return only the first one that existed. A device with dynamic
+# partitions has /dev/block/mapper, but recovery maps only what its fstab
+# asks for, so a partition missing from there was never looked for anywhere
+# else and the install stopped at "cannot mount /product".
+block_paths() {
+  [ -d /dev/block/mapper ] && echo /dev/block/mapper
+  [ -d /dev/block/bootdevice/by-name ] && echo /dev/block/bootdevice/by-name
+  find /dev/block/platform -type d -name by-name 2>/dev/null
+  return 0
 }
 
 # Locate the block device for a partition by name, honouring the active slot.
 # Needed when recovery has not already mounted the partition for us.
 find_block() {
   name=$1
-  base=$(block_path)
-  [ -z "$base" ] && return 1
   slot=$(find_slot)
-
-  for candidate in "$base/$name$slot" "$base/$name"; do
-    [ -b "$candidate" ] && echo "$candidate" && return 0
-  done
-
+  names="$name$slot $name"
   # System-as-root devices may present /system under another name.
-  if [ "$name" = "system" ]; then
-    for candidate in "$base/system$slot" "$base/system_root$slot"; do
-      [ -b "$candidate" ] && echo "$candidate" && return 0
+  [ "$name" = "system" ] && names="$names system_root$slot system_root"
+
+  for base in $(block_paths); do
+    for candidate in $names; do
+      [ -b "$base/$candidate" ] && echo "$base/$candidate" && return 0
     done
-  fi
+  done
   return 1
 }
 
@@ -118,8 +125,15 @@ make_rw() {
   case "$dev" in
     /dev/block/dm-*|/dev/block/mapper/*)
       blockdev --setrw "$dev" 2>/dev/null
-      dm=$(basename "$dev")
-      [ -w /sys/block/"$dm"/force_ro ] && echo 0 > /sys/block/"$dm"/force_ro 2>/dev/null
+      # /dev/block/mapper/product_b is a symlink to /dev/block/dm-N, and the
+      # sysfs knob is named for the dm device. basename on the link looked for
+      # /sys/block/product_b/force_ro, which does not exist, so the flag was
+      # never cleared. Dynamic partitions come up read-only, which made the
+      # remount below a no-op and every write fail.
+      dm=$(readlink -f "$dev" 2>/dev/null)
+      [ -z "$dm" ] && dm=$dev
+      dm=${dm##*/}
+      [ -f /sys/block/"$dm"/force_ro ] && echo 0 > /sys/block/"$dm"/force_ro 2>/dev/null
       ;;
   esac
 
@@ -152,6 +166,32 @@ mount_part() {
     is_writable "$mnt" && return 0
   fi
   return 1
+}
+
+# Why mount_part gave up on $1. Several unrelated causes all used to surface
+# as "cannot mount /product", which told nobody anything.
+mount_reason() {
+  mnt=$1
+  name=${mnt##*/}
+  fstype=$(grep " $mnt " /proc/mounts 2>/dev/null | head -n1 | awk '{print $3}')
+
+  case "$fstype" in
+    erofs|squashfs)
+      echo "it is $fstype, a read-only format; this ROM cannot be changed from recovery"
+      return 0 ;;
+  esac
+  if [ -n "$fstype" ]; then
+    echo "mounted $fstype but it would not accept a write"
+    return 0
+  fi
+
+  dev=$(find_block "$name")
+  if [ -n "$dev" ]; then
+    echo "$dev exists but would not mount"
+  else
+    echo "no block device named $name under $(block_paths | tr '\n' ' ')"
+  fi
+  return 0
 }
 
 # Free bytes on the filesystem holding $1.

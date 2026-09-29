@@ -98,6 +98,76 @@ check "equal is not less" "$r" "no"
 check "subtraction past 2 GiB" "$(sub_bytes 5000000000 1000000000)" "4000000000"
 check "addition past 2 GiB"    "$(add_bytes 3000000000 2000000000)" "5000000000"
 
+
+# A Pixel 8 stopped at "cannot mount /product" while NikGApps installed to the
+# same partition. These cover the helpers that decide where a partition is and
+# whether it will take a write.
+echo "== finding the partition =="
+
+DEV="$WORK/dev/block"
+mkdir -p "$DEV/mapper" "$DEV/bootdevice/by-name" "$WORK/sys/block"
+: > "$WORK/mounts"
+: > "$WORK/cmdline"
+getprop() { return 1; }
+
+# Redirect the absolute paths these read at the point of definition, so the
+# real bodies are under test against a fake /dev, /proc and /sys.
+fake() {
+  eval "$(sed -n "/^$1()/,/^}/p" "$UTIL" |
+          sed -e "s#/dev/block#$DEV#g" \
+              -e "s#/proc/mounts#$WORK/mounts#g" \
+              -e "s#/proc/cmdline#$WORK/cmdline#g" \
+              -e "s#/sys/block#$WORK/sys/block#g" \
+              -e "s#\[ -b #[ -e #g")"
+}
+for fn in find_slot block_paths find_block block_for mount_reason make_rw; do fake "$fn"; done
+
+: > "$DEV/mapper/product_b"
+echo "$DEV/mapper/system_b /system_root ext4 ro 0 0" > "$WORK/mounts"
+check "slot comes from what recovery mounted" "$(find_slot)" "_b"
+check "finds the slot-suffixed mapper device" "$(find_block product)" "$DEV/mapper/product_b"
+
+# The gap: mapper exists but does not carry this partition, so the search has
+# to go on to by-name instead of giving up on the first base.
+: > "$DEV/bootdevice/by-name/vendor"
+check "falls through to by-name when mapper lacks it" \
+  "$(find_block vendor)" "$DEV/bootdevice/by-name/vendor"
+check "every base is searched" "$(block_paths | wc -l | tr -d ' ')" "2"
+
+echo "== clearing force_ro on a dynamic partition =="
+# What the device really looks like: the mapper name is a symlink to dm-5 and
+# the sysfs knob is named for the dm device, not the link.
+: > "$DEV/dm-5"
+ln -sf "$DEV/dm-5" "$DEV/mapper/product_b"
+mkdir -p "$WORK/sys/block/dm-5"
+echo 1 > "$WORK/sys/block/dm-5/force_ro"
+echo "$DEV/mapper/product_b /product ext4 ro 0 0" > "$WORK/mounts"
+
+blockdev() { :; }
+mount() { :; }
+is_writable() { return 0; }
+make_rw /product >/dev/null 2>&1
+check "force_ro is cleared through the symlink" "$(cat "$WORK/sys/block/dm-5/force_ro")" "0"
+
+echo "== mount_reason =="
+echo "$DEV/mapper/product_b /product erofs ro 0 0" > "$WORK/mounts"
+case "$(mount_reason /product)" in
+  *read-only*) r=erofs ;; *) r="$(mount_reason /product)" ;;
+esac
+check "a read-only format says so" "$r" "erofs"
+
+echo "$DEV/mapper/product_b /product ext4 ro 0 0" > "$WORK/mounts"
+case "$(mount_reason /product)" in
+  *"would not accept a write"*) r=write ;; *) r="$(mount_reason /product)" ;;
+esac
+check "a writable format blames the write" "$r" "write"
+
+: > "$WORK/mounts"
+case "$(mount_reason /nosuch)" in
+  *"no block device named nosuch"*) r=missing ;; *) r="$(mount_reason /nosuch)" ;;
+esac
+check "a missing partition names what was searched" "$r" "missing"
+
 echo
 [ "$fail" = 0 ] && echo "all util assertions passed" || echo "FAILURES"
 exit $fail

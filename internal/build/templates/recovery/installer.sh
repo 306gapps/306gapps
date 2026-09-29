@@ -42,7 +42,8 @@ fi
 # ---- verify the ROM matches ------------------------------------------------
 
 unlock_blocks
-mount_part "$PREFIX/system" || mount_part "$PREFIX/system_root" || abort "cannot mount /system"
+mount_part "$PREFIX/system" || mount_part "$PREFIX/system_root" ||
+  abort "cannot mount /system: $(mount_reason "$PREFIX/system")"
 BUILDPROP=""
 for p in "$PREFIX/system/system/build.prop" "$PREFIX/system/build.prop"; do
   [ -f "$p" ] && BUILDPROP="$p" && break
@@ -91,7 +92,7 @@ for part in $PARTS; do
       elif [ -d "$SYSROOT/$part" ] && [ -n "$(ls -A "$SYSROOT/$part" 2>/dev/null)" ]; then
         target="$SYSROOT/$part"
       else
-        abort "cannot mount /$part"
+        abort "cannot mount /$part: $(mount_reason "$PREFIX/$part")"
       fi
       ;;
   esac
