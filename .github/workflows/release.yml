@@ -109,6 +109,12 @@ jobs:
           go run github.com/akavel/rsrc@v0.10.2 \
             -ico docs/icon.ico -arch ${{ matrix.goarch }} -o cmd/306gapps/rsrc.syso
 
+      # Tested on the checkout the binary is built from: windows builds once
+      # shipped crlf installer scripts that recovery could not run.
+      - name: Packaging tests
+        shell: bash
+        run: go test ./internal/build/
+
       - name: Build
         shell: bash
         env:

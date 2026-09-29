@@ -135,6 +135,17 @@ jobs:
         working-directory: android
         run: ./gradlew --console=plain testDebugUnitTest assembleDebug
 
+  # Windows builds shipped crlf installer scripts once. This runs the
+  # packaging tests on a windows checkout so that can't come back unnoticed.
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27"
+      - run: go test ./internal/build/ ./internal/sign/
+
   cross:
     runs-on: ubuntu-latest
     strategy:

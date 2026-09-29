@@ -478,3 +478,19 @@ func TestRecoveryFilesListNamesTheOwningPackage(t *testing.T) {
 		}
 	}
 }
+
+// Zips built on windows shipped scripts with crlf endings, which recovery
+// cannot exec. Whatever the checkout did, no script may carry a \r.
+func TestScriptsHaveUnixLineEndings(t *testing.T) {
+	for _, target := range []Target{TargetRecovery, TargetModule} {
+		_, files := buildTo(t, target)
+		for name, body := range files {
+			if strings.HasPrefix(name, "files/") {
+				continue
+			}
+			if strings.Contains(body, "\r") {
+				t.Errorf("%s: %s has a carriage return", target, name)
+			}
+		}
+	}
+}

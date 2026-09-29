@@ -3,6 +3,7 @@ package build
 
 import (
 	"archive/zip"
+	"bytes"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -246,7 +247,11 @@ func (w *writer) addTemplate(name, tmpl string, mode os.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("read template %s: %w", tmpl, err)
 	}
-	return w.addBytes(name, mode, b)
+	// a crlf checkout (git on windows) embeds "#!/sbin/sh\r", and the kernel
+	// then can't find the interpreter: recovery says "Can't run
+	// /tmp/update-binary (No such file or directory)". .gitattributes should
+	// prevent that, this makes sure.
+	return w.addBytes(name, mode, bytes.ReplaceAll(b, []byte("\r\n"), []byte("\n")))
 }
 
 func (w *writer) Close() error { return w.zw.Close() }

@@ -1,0 +1,3 @@
+# the installer scripts are embedded into the binary and run by recovery.
+# a crlf checkout on windows made "#!/sbin/sh\r", which recovery can't exec.
+* text=auto eol=lf
