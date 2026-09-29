@@ -45,3 +45,14 @@ go test ../mobile          # picker state and a full build against a local fixtu
 - signing key: app files dir. Uninstalling the app loses it, which only means
   the next package is signed by a new key.
 - the zip: app files dir until you save or share it. Each build replaces the last.
+
+## Updating
+
+The app checks GitHub for a newer release on launch and offers it in a strip
+above the picker. Tapping through downloads the apk and hands it to the system
+installer, which asks the user to confirm -- Android has no way for an app to
+install itself. The first time, it also has to be allowed as an install source.
+
+Updates install over the running build because every release apk is signed
+with the same key, which is why the release workflow refuses to publish a tag
+without one. A dev build reports no update: it is ahead of the last tag.

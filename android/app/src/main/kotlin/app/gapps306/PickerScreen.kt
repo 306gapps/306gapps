@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -68,10 +69,13 @@ fun PickerScreen(
     onBuild: (name: String) -> Unit,
     onSave: (BuildResult) -> Unit,
     onShare: (BuildResult) -> Unit,
+    onInstallUpdate: () -> Unit = {},
 ) {
     val picker by Gapps.picker.collectAsStateWithLifecycle()
     val build by Gapps.build.collectAsStateWithLifecycle()
+    val update by Updater.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    val ctx = LocalContext.current
     var naming by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
@@ -81,6 +85,8 @@ fun PickerScreen(
         },
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
+            UpdateBanner(update, onInstall = onInstallUpdate,
+                onDownload = { scope.launch { Updater.download(ctx) } })
             if (picker.releases.isNotEmpty()) {
                 ReleasePicker(picker) { scope.launch { Gapps.loadRelease(it) } }
             }
@@ -389,5 +395,54 @@ private fun BuildDialog(
             text = { SelectionContainer { Text(build.message) } },
             confirmButton = { TextButton(onClick = Gapps::dismissBuild) { Text("OK") } },
         )
+    }
+}
+
+
+/**
+ * A newer release, offered above the picker.
+ *
+ * Deliberately a strip rather than a dialog: an update is never more urgent
+ * than what the user opened the app to do.
+ */
+@Composable
+private fun UpdateBanner(state: UpdateState, onDownload: () -> Unit, onInstall: () -> Unit) {
+    if (state is UpdateState.None) return
+    Surface(color = MaterialTheme.colorScheme.secondaryContainer) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                when (state) {
+                    is UpdateState.Ready ->
+                        Text("${state.update.version} is available", style = MaterialTheme.typography.bodyMedium)
+                    is UpdateState.Downloading -> {
+                        Text("Downloading ${state.update.version}…",
+                            style = MaterialTheme.typography.bodyMedium)
+                        LinearProgressIndicator(
+                            progress = { state.frac },
+                            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        )
+                    }
+                    is UpdateState.Downloaded ->
+                        Text("${state.update.version} is ready to install",
+                            style = MaterialTheme.typography.bodyMedium)
+                    is UpdateState.Failed ->
+                        Text("Could not download ${state.update.version}: ${state.message}",
+                            style = MaterialTheme.typography.bodyMedium)
+                    UpdateState.None -> Unit
+                }
+            }
+            when (state) {
+                is UpdateState.Ready -> TextButton(onClick = onDownload) { Text("Download") }
+                is UpdateState.Downloaded -> TextButton(onClick = onInstall) { Text("Install") }
+                is UpdateState.Failed -> TextButton(onClick = onDownload) { Text("Retry") }
+                else -> Unit
+            }
+            if (state !is UpdateState.Downloading) {
+                TextButton(onClick = { Updater.dismiss() }) { Text("Later") }
+            }
+        }
     }
 }

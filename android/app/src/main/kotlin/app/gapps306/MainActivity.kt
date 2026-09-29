@@ -57,10 +57,12 @@ class MainActivity : ComponentActivity() {
         if (Gapps.picker.value.releases.isEmpty()) {
             lifecycleScope.launch { Gapps.loadReleases() }
         }
+        lifecycleScope.launch { Updater.check(BuildConfig.VERSION_NAME) }
         setContent {
             AppTheme {
                 PickerScreen(
                     onBuild = ::startBuild,
+                    onInstallUpdate = ::installUpdate,
                     onSave = { r ->
                         pendingSave = File(r.path)
                         saveZip.launch(r.name)
@@ -69,6 +71,23 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    // Android has no self-install: the system installer does it, and it needs
+    // the user to have allowed this app to be a source first.
+    private val askInstall = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { installUpdate() }
+
+    private fun installUpdate() {
+        val state = Updater.state.value
+        if (state !is UpdateState.Downloaded) return
+        if (!Updater.canInstall(this)) {
+            toast("Allow installing apps from 306Gapps, then tap Install again")
+            askInstall.launch(Updater.permissionIntent(this))
+            return
+        }
+        startActivity(Updater.installIntent(this, state.apk))
     }
 
     private fun startBuild(name: String) {

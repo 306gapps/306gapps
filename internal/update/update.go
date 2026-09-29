@@ -13,8 +13,25 @@ import (
 
 // Release is a published version.
 type Release struct {
-	Tag string `json:"tag_name"`
-	URL string `json:"html_url"`
+	Tag    string  `json:"tag_name"`
+	URL    string  `json:"html_url"`
+	Assets []Asset `json:"assets"`
+}
+
+// Asset is one file published with a release.
+type Asset struct {
+	Name string `json:"name"`
+	URL  string `json:"browser_download_url"`
+}
+
+// Asset returns the published file whose name ends in suffix.
+func (r Release) Asset(suffix string) (Asset, bool) {
+	for _, a := range r.Assets {
+		if strings.HasSuffix(a.Name, suffix) {
+			return a, true
+		}
+	}
+	return Asset{}, false
 }
 
 // Check returns the newest release when it is newer than current.

@@ -28,7 +28,11 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
-    buildFeatures { compose = true }
+    // buildConfig for VERSION_NAME, which the update check compares against
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     signingConfigs {
         if (keystore != null) {

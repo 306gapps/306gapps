@@ -6,9 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -258,5 +262,53 @@ func TestBuildUsesGivenName(t *testing.T) {
 	r := decode[resultJSON](t, js)
 	if r.Name != "my gapps.zip" || r.Path != filepath.Join(out, "my gapps.zip") {
 		t.Fatalf("result: %+v", r)
+	}
+}
+
+func TestCheckUpdateSaysNothingForADevBuild(t *testing.T) {
+	// A dev build is ahead of the last tag, so offering it one would be a
+	// downgrade. No network is touched.
+	got, err := CheckUpdate("0.0.0-dev")
+	if err != nil || got != "" {
+		t.Errorf("got %q, %v", got, err)
+	}
+}
+
+func TestDownloadUpdateRefusesAPartialFile(t *testing.T) {
+	// Truncating the body mid-stream must not leave an apk the installer
+	// would be handed.
+	body := strings.Repeat("x", 4096)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		io.WriteString(w, body[:100])
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	if _, err := DownloadUpdate(srv.URL+"/x.apk", dir, nil); err == nil {
+		t.Fatal("want an error")
+	}
+	left, _ := os.ReadDir(dir)
+	for _, e := range left {
+		if strings.HasSuffix(e.Name(), ".apk") {
+			t.Errorf("left a usable apk behind: %s", e.Name())
+		}
+	}
+}
+
+func TestDownloadUpdateWritesTheApk(t *testing.T) {
+	body := strings.Repeat("y", 2048)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, body)
+	}))
+	defer srv.Close()
+
+	path, err := DownloadUpdate(srv.URL+"/x.apk", t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || string(b) != body {
+		t.Errorf("got %d bytes, %v", len(b), err)
 	}
 }

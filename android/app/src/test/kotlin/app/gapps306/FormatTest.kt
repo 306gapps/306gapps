@@ -1,6 +1,7 @@
 package app.gapps306
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FormatTest {
@@ -43,5 +44,22 @@ class FormatTest {
         )
         assertEquals(setOf("a", "b"), s.set)
         assertEquals(listOf("a"), s.implied["b"])
+    }
+}
+
+// The updater decodes what mobile/update.go writes; a renamed field there
+// would otherwise surface as a silent "no update available".
+class UpdateJsonTest {
+    @Test
+    fun `decodes what the bridge emits`() {
+        val raw = """
+            {"version":"v0.3.1",
+             "page":"https://github.com/306gapps/306gapps/releases/tag/v0.3.1",
+             "apk":"https://github.com/306gapps/306gapps/releases/download/v0.3.1/306gapps-v0.3.1-android-arm64.apk",
+             "size":11170087}
+        """.trimIndent()
+        val u = json.decodeFromString<Available>(raw)
+        assertEquals("v0.3.1", u.version)
+        assertTrue(u.apk.endsWith("-android-arm64.apk"))
     }
 }
