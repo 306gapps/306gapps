@@ -52,6 +52,10 @@ does not. To force one or the other:
 306gapps pick     terminal picker
 ```
 
+On Linux the window picker adds a menu entry the first time it runs, which is
+what gives it a name and an icon in your launcher and taskbar. Move the binary
+and run `306gapps install-desktop` to point the entry at its new home.
+
 Pick an Android release, tick the apps you want, choose a format, and it builds
 the zip. Flash that in recovery.
 
@@ -137,6 +141,7 @@ as it was. It also survives OTA updates. Safer, if you have root.
 306gapps build -packages gsa,photos,gboard -target module
 306gapps list                available releases
 306gapps list 17             what is in the newest Android 17 release
+306gapps install-desktop     Linux: refresh the menu entry and icon
 ```
 
 | flag | meaning |

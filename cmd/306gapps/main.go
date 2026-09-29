@@ -85,6 +85,8 @@ func run() error {
 		return cmdCache(args)
 	case "configs":
 		return cmdConfigs(args)
+	case "install-desktop":
+		return cmdInstallDesktop(args)
 	case "validate":
 		return cmdValidate(args)
 	case "version":
@@ -119,6 +121,7 @@ usage:
   306gapps uninstaller [flags]     build a zip that removes an install
   306gapps cache [info|clear]      inspect or empty the download cache
   306gapps configs [list|delete]   saved selections from the picker
+  306gapps install-desktop         Linux: add a menu entry so the icon shows
   306gapps validate <manifest>     check a manifest for consistency
 
 common flags:
