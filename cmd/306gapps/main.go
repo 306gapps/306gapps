@@ -31,7 +31,7 @@ import (
 )
 
 // DefaultSource is the assets repo; -source points at a fork or local mirror.
-const DefaultSource = "https://raw.githubusercontent.com/306gapps/306gapps-assets/main"
+const DefaultSource = source.DefaultRoot
 
 func main() {
 	if err := run(); err != nil {

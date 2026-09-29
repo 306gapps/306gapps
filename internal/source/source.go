@@ -15,6 +15,9 @@ import (
 	"github.com/306gapps/306gapps/internal/manifest"
 )
 
+// DefaultRoot is the published assets repo.
+const DefaultRoot = "https://raw.githubusercontent.com/306gapps/306gapps-assets/main"
+
 // IndexSchema is the index version this build understands.
 const IndexSchema = 1
 
