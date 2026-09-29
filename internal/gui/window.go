@@ -17,6 +17,7 @@ import (
 
 	"github.com/306gapps/306gapps/internal/build"
 	"github.com/306gapps/306gapps/internal/config"
+	"github.com/306gapps/306gapps/internal/gui/icon"
 	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/source"
 	"github.com/306gapps/306gapps/internal/version"
@@ -27,7 +28,9 @@ func Run(ctx context.Context, src *source.Source, outDir string) error {
 	s := newState(ctx, src, outDir)
 
 	a := app.NewWithID("com.306gapps.picker")
+	a.SetIcon(icon.Resource)
 	w := a.NewWindow("306gapps " + version.String())
+	w.SetIcon(icon.Resource)
 	w.Resize(fyne.NewSize(940, 700))
 
 	ui := &window{state: s, win: w, app: a}

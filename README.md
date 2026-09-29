@@ -1,3 +1,5 @@
+<img src="docs/logo.png" alt="306Gapps" width="220">
+
 # 306gapps
 
 Builds a flashable Google apps package for a custom ROM. Pick an Android

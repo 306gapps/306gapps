@@ -100,6 +100,15 @@ jobs:
           echo "CC=$bin\aarch64-w64-mingw32-clang.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "CXX=$bin\aarch64-w64-mingw32-clang++.exe" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      # Windows takes its executable icon from a linked resource object, not
+      # from anything Go knows about.
+      - name: Executable icon
+        if: matrix.goos == 'windows'
+        shell: bash
+        run: |
+          go run github.com/akavel/rsrc@v0.10.2 \
+            -ico docs/icon.ico -arch ${{ matrix.goarch }} -o cmd/306gapps/rsrc.syso
+
       - name: Build
         shell: bash
         env:
