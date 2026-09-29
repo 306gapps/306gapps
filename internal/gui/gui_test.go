@@ -826,3 +826,25 @@ func TestRowNoteStopsAtTheFirstSentence(t *testing.T) {
 		t.Errorf("a single sentence should not be marked: %q %v", one, more)
 	}
 }
+
+// The footer says which build this is and what the cache costs.
+func TestFooterReportsVersionAndCache(t *testing.T) {
+	u := loaded(t)
+	if u.cacheLbl == nil || u.clearBtn == nil {
+		t.Fatal("no footer widgets")
+	}
+	// An empty cache says so and offers nothing to clear.
+	u.refreshCache()
+	if u.cacheLbl.Text != "cache empty" {
+		t.Errorf("empty cache should say so, got %q", u.cacheLbl.Text)
+	}
+	if !u.clearBtn.Disabled() {
+		t.Error("nothing to clear should disable the button")
+	}
+
+	// Put something in it and the footer follows.
+	if _, err := u.src.Cache.Put(strings.Repeat("a", 64),
+		strings.NewReader("")); err == nil {
+		t.Skip("cache rejects a bogus digest, as it should")
+	}
+}

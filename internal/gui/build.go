@@ -56,6 +56,7 @@ func (u *window) onBuild() {
 			})
 			done.Show()
 			u.status.SetText("wrote " + filepath.Base(result.Path))
+			u.refreshCache()
 		})
 	}()
 }

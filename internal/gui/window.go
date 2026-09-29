@@ -66,6 +66,8 @@ type window struct {
 	exportBtn  *widget.Button
 	deleteBtn  *widget.Button
 	outEntry   *widget.Entry
+	cacheLbl   *widget.Label
+	clearBtn   *widget.Button
 	buildBtn   *widget.Button
 	status     *widget.Label
 
@@ -214,6 +216,8 @@ func (u *window) build() fyne.CanvasObject {
 		container.NewBorder(nil, nil,
 			widget.NewLabel("Format"), u.buildBtn, u.target),
 		u.status,
+		widget.NewSeparator(),
+		u.footer(),
 	)
 	return container.NewBorder(top, bottom, nil, nil,
 		container.NewVScroll(u.list))
