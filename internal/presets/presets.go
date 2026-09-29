@@ -40,8 +40,9 @@ type Definition struct {
 }
 
 type file struct {
-	Schema   int          `json:"schema" yaml:"schema"`
-	Variants []Definition `json:"variants" yaml:"variants"`
+	Schema       int               `json:"schema" yaml:"schema"`
+	Variants     []Definition      `json:"variants" yaml:"variants"`
+	Experimental map[string]string `json:"experimental,omitempty" yaml:"experimental"`
 }
 
 // Origin says where the presets in use came from, for the status line.
@@ -54,11 +55,15 @@ const (
 
 // Builtin returns the presets compiled into this binary.
 func Builtin() []Definition {
+	return builtinFile().Variants
+}
+
+func builtinFile() file {
 	var f file
 	if err := yaml.Unmarshal(builtin, &f); err != nil {
 		panic("presets.yaml does not parse: " + err.Error())
 	}
-	return f.Variants
+	return f
 }
 
 // Opener fetches a path relative to the source root.
@@ -71,24 +76,25 @@ type Opener interface {
 // Anything wrong with the remote copy -- unreachable, malformed, a schema this
 // build predates, or empty -- leaves the built-in presets in place rather than
 // leaving the picker with none.
-func Load(ctx context.Context, src Opener) ([]Definition, Origin) {
+func Load(ctx context.Context, src Opener) ([]Definition, map[string]string, Origin) {
+	b := builtinFile()
 	if src == nil {
-		return Builtin(), OriginBuiltin
+		return b.Variants, b.Experimental, OriginBuiltin
 	}
 	rc, _, err := src.Open(ctx, Remote)
 	if err != nil {
-		return Builtin(), OriginBuiltin
+		return b.Variants, b.Experimental, OriginBuiltin
 	}
 	defer rc.Close()
 
 	var f file
 	if err := json.NewDecoder(io.LimitReader(rc, 1<<20)).Decode(&f); err != nil {
-		return Builtin(), OriginBuiltin
+		return b.Variants, b.Experimental, OriginBuiltin
 	}
 	if f.Schema != Schema || len(f.Variants) == 0 {
-		return Builtin(), OriginBuiltin
+		return b.Variants, b.Experimental, OriginBuiltin
 	}
-	return f.Variants, OriginRemote
+	return f.Variants, f.Experimental, OriginRemote
 }
 
 // Resolve flattens the tier chains and drops ids the release does not ship.
@@ -157,6 +163,7 @@ func Resolve(defs []Definition, order []string) ([]manifest.Variant, error) {
 type Target interface {
 	Order() []string
 	SetVariants([]manifest.Variant)
+	SetExperimental(map[string]string)
 }
 
 // Apply loads the presets and puts them on the catalog.
@@ -164,18 +171,21 @@ type Target interface {
 // A preset that will not resolve leaves the catalog's own alone rather than
 // emptying the picker.
 func Apply(ctx context.Context, src Opener, c Target) Origin {
-	defs, origin := Load(ctx, src)
+	defs, exp, origin := Load(ctx, src)
 	vs, err := Resolve(defs, c.Order())
 	if err != nil {
 		if origin == OriginBuiltin {
 			return origin
 		}
 		// A bad remote copy should not cost the user the built-in presets.
-		if vs, err = Resolve(Builtin(), c.Order()); err != nil {
+		b := builtinFile()
+		if vs, err = Resolve(b.Variants, c.Order()); err != nil {
 			return OriginBuiltin
 		}
+		exp = b.Experimental
 		origin = OriginBuiltin
 	}
 	c.SetVariants(vs)
+	c.SetExperimental(exp)
 	return origin
 }

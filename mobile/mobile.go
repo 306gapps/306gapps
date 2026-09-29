@@ -99,12 +99,13 @@ type groupJSON struct {
 }
 
 type packageJSON struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	Summary      string `json:"summary"`
-	Size         int64  `json:"size"`
-	Required     bool   `json:"required"`
-	Experimental bool   `json:"experimental"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Summary          string `json:"summary"`
+	Size             int64  `json:"size"`
+	Required         bool   `json:"required"`
+	Experimental     bool   `json:"experimental"`
+	ExperimentalNote string `json:"experimentalNote,omitempty"`
 }
 
 type variantJSON struct {
@@ -159,7 +160,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 	for _, g := range cat.Groups() {
 		gj := groupJSON{ID: g.ID, Name: g.Name, Summary: g.Summary, Packages: []packageJSON{}}
 		for _, p := range byGroup[g.ID] {
-			gj.Packages = append(gj.Packages, packageJSON{p.ID, p.Name, p.Summary, p.Size(), p.Required, p.Experimental})
+			gj.Packages = append(gj.Packages, packageJSON{p.ID, p.Name, p.Summary, p.Size(), p.Required, p.Experimental, p.ExperimentalNote})
 			gj.Size += p.Size()
 		}
 		out.Groups = append(out.Groups, gj)

@@ -544,7 +544,14 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	note.Importance = widget.LowImportance
 
 	// Full text lives in a second line that starts hidden; clicking the name unfolds it.
-	detail := widget.NewLabel(p.Summary)
+	detailText := p.Summary
+	if p.Experimental && p.ExperimentalNote != "" {
+		detailText = "Experimental: " + p.ExperimentalNote
+		if p.Summary != "" {
+			detailText += "\n\n" + p.Summary
+		}
+	}
+	detail := widget.NewLabel(detailText)
 	detail.Wrapping = fyne.TextWrapWord
 	detail.Importance = widget.LowImportance
 
@@ -566,7 +573,7 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 
 	line := container.NewBorder(nil, nil,
 		container.NewHBox(check, newTappable(nameCell, func() {
-			if p.Summary == "" {
+			if p.Summary == "" && p.ExperimentalNote == "" {
 				return
 			}
 			if expanded.Visible() {

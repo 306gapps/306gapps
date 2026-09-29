@@ -23,6 +23,18 @@ func New(m *manifest.Manifest) *Catalog {
 // Older manifests carry their own, which older builds still read.
 func (c *Catalog) SetVariants(v []manifest.Variant) { c.variants = v }
 
+// SetExperimental flags the named packages, with a note the picker shows.
+// Applied after load from the app's own list, so a warning needs no re-dump.
+func (c *Catalog) SetExperimental(notes map[string]string) {
+	for i := range c.m.Packages {
+		if note, ok := notes[c.m.Packages[i].ID]; ok {
+			c.m.Packages[i].Experimental = true
+			c.m.Packages[i].ExperimentalNote = note
+			c.idx[c.m.Packages[i].ID] = c.m.Packages[i]
+		}
+	}
+}
+
 // Order is the manifest's package order, which presets resolve against.
 func (c *Catalog) Order() []string {
 	out := make([]string, len(c.m.Packages))

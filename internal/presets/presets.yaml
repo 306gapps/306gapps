@@ -76,3 +76,10 @@ variants:
                setupwizard, sounds, storagemanager, syncadapters,
                trichrome, tts, vending, webview, wellbeing]
 
+# Packages flagged experimental in the picker, with the reason. Shipped with
+# the app, and overridable via the remote presets file, so a warning can be
+# added or changed without a re-dump. Keyed by package id.
+experimental:
+  setupwizard: >-
+    Crash-loops first boot on some devices. If setup hangs, skip this and sign
+    in from Settings afterwards.

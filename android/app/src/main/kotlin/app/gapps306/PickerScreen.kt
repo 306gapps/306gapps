@@ -262,7 +262,7 @@ private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, o
     Row(
         Modifier
             .fillMaxWidth()
-            .clickable(enabled = p.summary.isNotEmpty()) { expanded = !expanded }
+            .clickable(enabled = p.summary.isNotEmpty() || p.experimentalNote.isNotEmpty()) { expanded = !expanded }
             .padding(start = 4.dp, end = 16.dp, top = 2.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -276,7 +276,11 @@ private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, o
                         color = MaterialTheme.colorScheme.error)
                 }
             }
-            val note = if (expanded && !p.required && !implied) p.summary else packageNote(p, sel, names)
+            val detail = if (p.experimental && p.experimentalNote.isNotEmpty())
+                "Experimental: " + p.experimentalNote +
+                    (if (p.summary.isNotEmpty()) "\n\n" + p.summary else "")
+            else p.summary
+            val note = if (expanded && !p.required && !implied) detail else packageNote(p, sel, names)
             if (note.isNotEmpty()) {
                 Text(
                     note,

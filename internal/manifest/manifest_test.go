@@ -1,6 +1,7 @@
 package manifest
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -92,10 +93,23 @@ func TestValidateRejectsConflictingRequiredPackages(t *testing.T) {
 	wantErr(t, m, "both required but conflict")
 }
 
-func TestLoadRejectsUnknownFields(t *testing.T) {
-	_, err := Load(strings.NewReader(`{"schema":1,"bogus":true}`))
-	if err == nil || !strings.Contains(err.Error(), "bogus") {
-		t.Fatalf("want unknown-field error, got %v", err)
+// An additive optional field must not break an older reader: unknown fields are
+// ignored, and Schema is the real compatibility gate.
+func TestLoadIgnoresUnknownFields(t *testing.T) {
+	b := base()
+	raw, err := json.Marshal(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Splice in a field this build does not know.
+	withExtra := strings.Replace(string(raw), `"schema":1,`,
+		`"schema":1,"somethingNewer":{"a":1},`, 1)
+	m, err := Load(strings.NewReader(withExtra))
+	if err != nil {
+		t.Fatalf("unknown field should be ignored, got %v", err)
+	}
+	if m.Release.ID != b.Release.ID {
+		t.Errorf("release not decoded: %+v", m.Release)
 	}
 }
 
@@ -228,11 +242,14 @@ func TestValidateRejectsRemovalOnAnUnknownPartition(t *testing.T) {
 // A release published either side of a schema change is the common cause of a
 // strict-decoding failure, and "unknown field" alone reads like corruption.
 func TestLoadExplainsASchemaMismatch(t *testing.T) {
-	_, err := Load(strings.NewReader(`{"schema":1,"packages":[{"category":"core"}]}`))
+	b := base()
+	b.Schema = Schema + 1
+	raw, _ := json.Marshal(b)
+	_, err := Load(strings.NewReader(string(raw)))
 	if err == nil {
-		t.Fatal("an unknown field should be refused")
+		t.Fatal("a newer schema should be refused")
 	}
-	for _, want := range []string{"different version of 306gapps", "category", "Update 306gapps"} {
+	for _, want := range []string{"different version of 306gapps", "update 306gapps"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("message should mention %q: %v", want, err)
 		}

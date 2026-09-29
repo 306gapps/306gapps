@@ -264,6 +264,9 @@ func cmdList(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
+	c := catalog.New(m)
+	presets.Apply(ctx, s, c)
+	m = c.Manifest()
 	if *asJSON {
 		return json.NewEncoder(os.Stdout).Encode(m.Packages)
 	}

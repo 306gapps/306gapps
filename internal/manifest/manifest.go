@@ -90,8 +90,11 @@ type Package struct {
 	Required bool `json:"required,omitempty"`
 	// Default packages start selected.
 	Default bool `json:"default,omitempty"`
-	// Experimental packages carry a warning; the summary says what is wrong.
-	Experimental bool `json:"experimental,omitempty"`
+	// Experimental is set by the app, not the manifest: a warning the picker
+	// shows. ExperimentalNote says what is wrong. Kept out of the manifest so
+	// adding a warning needs neither a re-dump nor a newer manifest schema.
+	Experimental     bool   `json:"-"`
+	ExperimentalNote string `json:"-"`
 
 	Requires  []string `json:"requires,omitempty"`
 	Conflicts []string `json:"conflicts,omitempty"`
@@ -195,10 +198,11 @@ func (p Package) Size() int64 {
 
 func Load(r io.Reader) (*Manifest, error) {
 	var m Manifest
-	dec := json.NewDecoder(r)
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
-		return nil, decodeError(err)
+	// Not DisallowUnknownFields: an additive optional field must not break an
+	// older reader. Schema (checked in Validate) is the real compatibility
+	// gate -- a breaking change bumps it.
+	if err := json.NewDecoder(r).Decode(&m); err != nil {
+		return nil, fmt.Errorf("decode manifest: %w", err)
 	}
 	if err := m.Validate(); err != nil {
 		return nil, err
@@ -264,7 +268,8 @@ func (m *Manifest) Validate() error {
 	add := func(f string, a ...any) { errs = append(errs, fmt.Sprintf(f, a...)) }
 
 	if m.Schema != Schema {
-		add("schema %d unsupported (want %d)", m.Schema, Schema)
+		add("this release needs a different version of 306gapps "+
+			"(manifest schema %d, this build speaks %d); update 306gapps", m.Schema, Schema)
 	}
 	if m.Release.ID == "" {
 		add("release.id is empty")

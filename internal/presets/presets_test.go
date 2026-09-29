@@ -128,7 +128,7 @@ func TestBuiltinResolvesAgainstItsOwnIds(t *testing.T) {
 
 func TestRemoteSupersedesBuiltin(t *testing.T) {
 	body := `{"schema":1,"variants":[{"id":"only","name":"Only","packages":["gmscore"]}]}`
-	defs, origin := Load(context.Background(), stub{body: body})
+	defs, _, origin := Load(context.Background(), stub{body: body})
 	if origin != OriginRemote {
 		t.Errorf("origin = %q", origin)
 	}
@@ -148,7 +148,7 @@ func TestBadRemoteFallsBackToBuiltin(t *testing.T) {
 		"no variants":    {body: `{"schema":1,"variants":[]}`},
 		"empty document": {body: `{}`},
 	} {
-		defs, origin := Load(context.Background(), s)
+		defs, _, origin := Load(context.Background(), s)
 		if origin != OriginBuiltin {
 			t.Errorf("%s: origin = %q", name, origin)
 		}
@@ -159,7 +159,7 @@ func TestBadRemoteFallsBackToBuiltin(t *testing.T) {
 }
 
 func TestNoSourceUsesBuiltin(t *testing.T) {
-	defs, origin := Load(context.Background(), nil)
+	defs, _, origin := Load(context.Background(), nil)
 	if origin != OriginBuiltin || len(defs) == 0 {
 		t.Errorf("origin %q, %d presets", origin, len(defs))
 	}
@@ -168,10 +168,12 @@ func TestNoSourceUsesBuiltin(t *testing.T) {
 type target struct {
 	order []string
 	got   []manifest.Variant
+	exp   map[string]string
 }
 
-func (t *target) Order() []string                  { return t.order }
-func (t *target) SetVariants(v []manifest.Variant) { t.got = v }
+func (t *target) Order() []string                     { return t.order }
+func (t *target) SetVariants(v []manifest.Variant)    { t.got = v }
+func (t *target) SetExperimental(m map[string]string) { t.exp = m }
 
 func TestApplyKeepsBuiltinWhenTheRemoteWillNotResolve(t *testing.T) {
 	tg := &target{order: []string{"gmscore", "vending"}}
@@ -203,4 +205,28 @@ func contains(s []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func TestBuiltinFlagsSetupWizardExperimental(t *testing.T) {
+	tg := &target{order: []string{"setupwizard", "gmscore"}}
+	Apply(context.Background(), nil, tg)
+	note, ok := tg.exp["setupwizard"]
+	if !ok {
+		t.Fatal("setupwizard not flagged experimental")
+	}
+	if note == "" {
+		t.Error("no note for the experimental package")
+	}
+}
+
+func TestRemoteExperimentalSupersedes(t *testing.T) {
+	body := `{"schema":1,"variants":[{"id":"x","name":"X","packages":["gmscore"]}],` +
+		`"experimental":{"gmscore":"testing only"}}`
+	_, exp, origin := Load(context.Background(), stub{body: body})
+	if origin != OriginRemote {
+		t.Fatalf("origin = %q", origin)
+	}
+	if exp["gmscore"] != "testing only" {
+		t.Errorf("experimental = %v", exp)
+	}
 }
