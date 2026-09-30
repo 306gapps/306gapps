@@ -129,6 +129,22 @@ else
     || { echo "  FAIL wrong error:"; cat "$WORK/log3"; fail=1; }
 fi
 
+echo "== counts space freed by removals =="
+# Same tiny free space that aborted above, but now a large superseded app is
+# present for the removals to reclaim. It should install rather than abort.
+mkdir -p "$ROM/product/app/QuickSearchBox"
+head -c 10485760 /dev/zero > "$ROM/product/app/QuickSearchBox/big.apk" 2>/dev/null
+if FAKE_FREE=204800 install_run >"$WORK/log4" 2>&1; then
+  grep -q "once superseded apps go" "$WORK/log4" \
+    && echo "  ok   removal-freed space counted in the check" \
+    || { echo "  FAIL no reclaim shown:"; cat "$WORK/log4"; fail=1; }
+  [ ! -e "$ROM/product/app/QuickSearchBox" ] \
+    && echo "  ok   installed after reclaiming space" \
+    || { echo "  FAIL superseded app not removed"; fail=1; }
+else
+  echo "  FAIL aborted though removals would free enough:"; cat "$WORK/log4"; fail=1
+fi
+
 echo "== the package is signed =="
 check "MANIFEST.MF present"     'grep -q "META-INF/MANIFEST.MF" "$WORK/listing"'
 check "signature block present" 'grep -qE "META-INF/[A-Z0-9]+\.RSA" "$WORK/listing"'

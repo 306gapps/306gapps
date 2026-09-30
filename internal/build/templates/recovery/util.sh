@@ -271,6 +271,11 @@ frp_wipe_block() {
   return 0
 }
 
+# Bytes used by a file or directory tree. Estimates what a removal will free.
+du_bytes() {
+  du -s -k "$1" 2>/dev/null | awk '{print $1 * 1024; exit}'
+}
+
 # Free bytes on the filesystem holding $1.
 free_bytes() {
   # $(NF-2) rather than $4: busybox df puts a long device name on a line of

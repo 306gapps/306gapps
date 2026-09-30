@@ -110,21 +110,57 @@ done
 
 # ---- space check -----------------------------------------------------------
 
+# Space the removals will free on $1. The superseded AOSP apps are deleted
+# further down, after this check, so their space is not yet free when df runs.
+# Count it here so the check reflects the state the install actually happens in,
+# not the state before. Nothing is deleted here: a real shortage still aborts
+# below with the ROM untouched.
+reclaimable() {
+  _part=$1
+  eval "_t=\$ROOT_$_part"
+  { [ -z "$_t" ] || [ ! -s "$TMP/installer/removals.txt" ]; } && { echo 0; return; }
+  _sum=0
+  while IFS= read -r _e; do
+    [ -z "$_e" ] && continue
+    case "$_e" in
+      */*)
+        [ "${_e%%/*}" = "$_part" ] || continue
+        _v="$_t/${_e#*/}"
+        [ -e "$_v" ] && _sum=$(add_bytes "$_sum" "$(du_bytes "$_v")")
+        ;;
+      *)
+        for _d in app priv-app; do
+          _v="$_t/$_d/$_e"
+          [ -e "$_v" ] && _sum=$(add_bytes "$_sum" "$(du_bytes "$_v")")
+        done
+        ;;
+    esac
+  done < "$TMP/installer/removals.txt"
+  echo "$_sum"
+}
+
 for part in $PARTS; do
   eval "target=\$ROOT_$part"
   need=$(awk -F'\t' -v p="$part/" 'index($1,p)==1 {s+=$4} END {print s+0}' "$LIST")
   free=$(free_bytes "$target")
-  ui_print "- /$part needs $(human "$need"), has $(human "$free") free"
+  reclaim=$(reclaimable "$part")
+  avail=$(add_bytes "$free" "$reclaim")
+  if lt 0 "$reclaim"; then
+    ui_print "- /$part needs $(human "$need"), has $(human "$free") free, +$(human "$reclaim") once superseded apps go"
+  else
+    ui_print "- /$part needs $(human "$need"), has $(human "$free") free"
+  fi
   # lt, not [ -lt: sizes here routinely exceed what recovery's shell can
   # compare. See util.sh.
-  if lt "$free" "$need"; then
+  if lt "$avail" "$need"; then
     ui_print "  trying to grow /$part..."
-    if grow_part "$PREFIX/$part" "$(sub_bytes "$need" "$free")"; then
+    if grow_part "$PREFIX/$part" "$(sub_bytes "$need" "$avail")"; then
       free=$(free_bytes "$target")
+      avail=$(add_bytes "$free" "$reclaim")
       ui_print "  grew to $(human "$free") free"
     fi
   fi
-  lt "$free" "$need" && abort "not enough space on /$part: need $(human "$need"), have $(human "$free")"
+  lt "$avail" "$need" && abort "not enough space on /$part: need $(human "$need"), have $(human "$avail") after removals"
 done
 
 # ---- remove superseded AOSP packages ---------------------------------------
