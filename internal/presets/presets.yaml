@@ -31,7 +31,7 @@ variants:
     summary: >-
       Basic plus setup, the keyboard, and the everyday Google apps.
     includes: basic
-    packages: [setupwizard, restore, gboard, calendar, keep, calculator,
+    packages: [setupwizard, localeshim, restore, gboard, calendar, keep, calculator,
                drive, maps, locationhistory, photos]
 
   - id: stock
@@ -61,7 +61,7 @@ variants:
     summary: >-
       What crDroid ships as its official package. Maintained by the ROM.
     packages: [aiai, androidauto, gemini, gmscore, gsa, gsf, markup,
-               restore, setupwizard, sounds, syncadapters, trichrome, tts,
+               restore, setupwizard, localeshim, sounds, syncadapters, trichrome, tts,
                vending, webview, wellbeing]
 
   - id: crdroid-full
@@ -73,7 +73,7 @@ variants:
                documentsui, drive, feedback, files, gboard, gemini, gmail,
                gmscore, gsa, gsf, keep, locationhistory, maps, markup,
                messages, partnersetup, photos, recorder, restore,
-               setupwizard, sounds, storagemanager, syncadapters,
+               setupwizard, localeshim, sounds, storagemanager, syncadapters,
                trichrome, tts, vending, webview, wellbeing]
 
 # Packages flagged experimental in the picker, with the reason. Shipped with
