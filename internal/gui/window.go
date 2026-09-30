@@ -109,6 +109,8 @@ type packageRow struct {
 	detail   *widget.Label
 	expanded *fyne.Container
 	pkg      manifest.Package
+	// setupSel is the Pixel/AOSP selector, set only on the setupwizard row.
+	setupSel *widget.RadioGroup
 }
 
 func (u *window) build() fyne.CanvasObject {
@@ -378,6 +380,9 @@ func (u *window) rebuildList() {
 		var rows []fyne.CanvasObject
 		var matched []manifest.Package
 		for _, p := range members {
+			if p.ID == "localeshim" && u.state.keepStock["setupwizard"] {
+				continue
+			}
 			if !matchesFilter(p, g.Name, needle) {
 				continue
 			}
@@ -534,10 +539,11 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	id := widget.NewLabel(p.ID)
 	id.Importance = widget.LowImportance
 	var nameCell fyne.CanvasObject = name
+	var expTag *widget.Label
 	if p.Experimental {
-		tag := widget.NewLabel("experimental")
-		tag.Importance = widget.WarningImportance
-		nameCell = container.NewHBox(name, tag)
+		expTag = widget.NewLabel("experimental")
+		expTag.Importance = widget.WarningImportance
+		nameCell = container.NewHBox(name, expTag)
 	}
 	size := widget.NewLabel(humanSize(p.Size()))
 	size.Alignment = fyne.TextAlignTrailing
@@ -565,9 +571,42 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 	expanded := indent(detail)
 	expanded.Hide()
 
-	// Expert-only: keeping both the ROM's app and ours is rarely what anyone wants.
 	var trailing fyne.CanvasObject = size
-	if u.state.expert && replaces(p) {
+	var setupSel *widget.RadioGroup
+	switch {
+	case p.ID == "setupwizard":
+		// Only the Pixel flow is experimental; AOSP is the ROM's own wizard.
+		showExp := func(on bool) {
+			if expTag == nil {
+				return
+			}
+			if on {
+				expTag.Show()
+			} else {
+				expTag.Hide()
+			}
+		}
+		sel := widget.NewRadioGroup([]string{"Pixel", "AOSP"}, func(v string) {
+			aosp := v == "AOSP"
+			u.state.keepStock[p.ID] = aosp
+			showExp(!aosp)
+			// The locale picker only matters to the Pixel flow.
+			u.selected["localeshim"] = !aosp
+			u.resolve()
+			u.rebuildList()
+			u.refreshSummary()
+		})
+		sel.Horizontal = true
+		sel.Required = true
+		if u.state.keepStock[p.ID] {
+			sel.Selected = "AOSP"
+		} else {
+			sel.Selected = "Pixel"
+		}
+		showExp(!u.state.keepStock[p.ID])
+		setupSel = sel
+		trailing = container.NewHBox(sel, size)
+	case u.state.expert && replaces(p):
 		keep := widget.NewCheck("keep ROM app", func(on bool) {
 			u.state.keepStock[p.ID] = on
 			u.refreshSummary()
@@ -590,7 +629,7 @@ func (u *window) packageRow(p manifest.Package) fyne.CanvasObject {
 		}), id), trailing, note)
 
 	u.rows[p.ID] = &packageRow{check: check, note: note,
-		detail: detail, expanded: expanded, pkg: p}
+		detail: detail, expanded: expanded, pkg: p, setupSel: setupSel}
 
 	return container.NewVBox(line, expanded)
 }
