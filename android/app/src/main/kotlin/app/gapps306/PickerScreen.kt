@@ -77,6 +77,7 @@ fun PickerScreen(
     val scope = rememberCoroutineScope()
     val ctx = LocalContext.current
     var naming by rememberSaveable { mutableStateOf(false) }
+    var expert by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("306Gapps") }) },
@@ -103,7 +104,8 @@ fun PickerScreen(
                 }
                 cat != null -> {
                     Presets(cat, picker.selection) { scope.launch { Gapps.applyVariant(it) } }
-                    PackageList(cat, picker.selection, scope)
+                    ExpertToggle(expert) { expert = it }
+                    PackageList(cat, picker.selection, expert, scope)
                 }
             }
         }
@@ -205,15 +207,33 @@ private fun Presets(cat: Catalog, sel: Selection, onPick: (String) -> Unit) {
 }
 
 @Composable
-private fun PackageList(cat: Catalog, sel: Selection, scope: kotlinx.coroutines.CoroutineScope) {
+private fun ExpertToggle(expert: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clickable { onChange(!expert) }
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = expert, onCheckedChange = onChange)
+        Text("Expert mode", style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+@Composable
+private fun PackageList(cat: Catalog, sel: Selection, expert: Boolean, scope: kotlinx.coroutines.CoroutineScope) {
     val names = remember(cat) { cat.names() }
+    val hideShim = "setupwizard" in sel.kept
     LazyColumn(Modifier.fillMaxSize()) {
         cat.groups.forEach { g ->
+            val pkgs = if (hideShim) g.packages.filter { it.id != "localeshim" } else g.packages
             item(key = "g:" + g.id) {
                 GroupHeader(g, groupCheck(g, sel)) { on -> scope.launch { Gapps.setGroup(g.id, on) } }
             }
-            items(g.packages, key = { "p:" + it.id }) { p ->
-                PackageRow(p, sel, names) { on -> scope.launch { Gapps.toggle(p.id, on) } }
+            items(pkgs, key = { "p:" + it.id }) { p ->
+                PackageRow(
+                    p, sel, expert, names,
+                    onSet = { on -> scope.launch { Gapps.toggle(p.id, on) } },
+                    onKeepStock = { on -> scope.launch { Gapps.setKeepStock(p.id, on) } },
+                )
             }
         }
     }
@@ -255,10 +275,19 @@ private fun GroupHeader(g: Group, check: GroupCheck, onSet: (Boolean) -> Unit) {
 }
 
 @Composable
-private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, onSet: (Boolean) -> Unit) {
+private fun PackageRow(
+    p: Package,
+    sel: Selection,
+    expert: Boolean,
+    names: Map<String, String>,
+    onSet: (Boolean) -> Unit,
+    onKeepStock: (Boolean) -> Unit,
+) {
     var expanded by rememberSaveable(p.id) { mutableStateOf(false) }
     val on = p.id in sel.set
     val implied = p.id in sel.implied
+    val kept = p.id in sel.kept
+    val isSetup = p.id == "setupwizard"
     Row(
         Modifier
             .fillMaxWidth()
@@ -270,7 +299,7 @@ private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, o
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(p.name, style = MaterialTheme.typography.bodyLarge)
-                if (p.experimental) {
+                if (p.experimental && !(isSetup && kept)) {
                     Spacer(Modifier.width(6.dp))
                     Text("experimental", style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.error)
@@ -289,6 +318,24 @@ private fun PackageRow(p: Package, sel: Selection, names: Map<String, String>, o
                     else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = if (expanded) Int.MAX_VALUE else 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (isSetup) {
+                Row(
+                    Modifier.padding(top = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(selected = !kept, onClick = { onKeepStock(false) },
+                        label = { Text("Pixel") })
+                    FilterChip(selected = kept, onClick = { onKeepStock(true) },
+                        label = { Text("AOSP") })
+                }
+            } else if (expert && p.replaces) {
+                FilterChip(
+                    selected = kept,
+                    onClick = { onKeepStock(!kept) },
+                    label = { Text("keep ROM app") },
+                    modifier = Modifier.padding(top = 4.dp),
                 )
             }
         }

@@ -36,11 +36,12 @@ type Session struct {
 	src       *source.Source
 	configDir string
 
-	mu       sync.Mutex
-	index    *source.Index
-	cat      *catalog.Catalog
-	selected map[string]bool
-	res      *catalog.Resolution
+	mu        sync.Mutex
+	index     *source.Index
+	cat       *catalog.Catalog
+	selected  map[string]bool
+	keepStock map[string]bool
+	res       *catalog.Resolution
 	resErr   error
 	cancel   context.CancelFunc
 }
@@ -54,6 +55,7 @@ func NewSession(root, cacheDir, configDir string) *Session {
 		src:       source.New(root, source.NewCache(cacheDir)),
 		configDir: configDir,
 		selected:  map[string]bool{},
+		keepStock: map[string]bool{},
 	}
 }
 
@@ -106,6 +108,7 @@ type packageJSON struct {
 	Required         bool   `json:"required"`
 	Experimental     bool   `json:"experimental"`
 	ExperimentalNote string `json:"experimentalNote,omitempty"`
+	Replaces         bool   `json:"replaces,omitempty"`
 }
 
 type variantJSON struct {
@@ -145,6 +148,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 	s.mu.Lock()
 	s.cat = cat
 	s.selected = map[string]bool{}
+	s.keepStock = map[string]bool{}
 	for _, id := range cat.Defaults() {
 		s.selected[id] = true
 	}
@@ -160,7 +164,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 	for _, g := range cat.Groups() {
 		gj := groupJSON{ID: g.ID, Name: g.Name, Summary: g.Summary, Packages: []packageJSON{}}
 		for _, p := range byGroup[g.ID] {
-			gj.Packages = append(gj.Packages, packageJSON{p.ID, p.Name, p.Summary, p.Size(), p.Required, p.Experimental, p.ExperimentalNote})
+			gj.Packages = append(gj.Packages, packageJSON{p.ID, p.Name, p.Summary, p.Size(), p.Required, p.Experimental, p.ExperimentalNote, len(p.Removes) > 0})
 			gj.Size += p.Size()
 		}
 		out.Groups = append(out.Groups, gj)
@@ -179,8 +183,9 @@ type stateJSON struct {
 	Count   int                 `json:"count"`
 	Size    int64               `json:"size"`
 	// Variant is the preset the selection matches exactly, or empty.
-	Variant string `json:"variant"`
-	Error   string `json:"error"`
+	Variant   string   `json:"variant"`
+	KeepStock []string `json:"keepStock,omitempty"`
+	Error     string   `json:"error"`
 }
 
 // State reports the current resolution.
@@ -207,6 +212,22 @@ func (s *Session) Toggle(id string, on bool) string {
 		}
 	}
 	s.resolve()
+	return s.state()
+}
+
+// SetKeepStock skips (or restores) a package's removal of the ROM's own app.
+func (s *Session) SetKeepStock(id string, on bool) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cat == nil {
+		return s.state()
+	}
+	s.keepStock[id] = on
+	if id == "setupwizard" {
+		// The locale shim only matters to the Pixel flow.
+		s.selected["localeshim"] = !on
+		s.resolve()
+	}
 	return s.state()
 }
 
@@ -294,6 +315,7 @@ func (s *Session) Build(outDir, name string, p Progress) (string, error) {
 		return "", errors.New("a build is already running")
 	}
 	cat, res, resErr, idx := s.cat, s.res, s.resErr, s.index
+	keepStock := s.keepStockIDs()
 	if cat == nil || res == nil {
 		s.mu.Unlock()
 		if resErr != nil {
@@ -312,7 +334,7 @@ func (s *Session) Build(outDir, name string, p Progress) (string, error) {
 		cancel()
 	}()
 
-	r, err := s.build(ctx, cat.Manifest(), res, idx, outDir, name, p.Update)
+	r, err := s.build(ctx, cat.Manifest(), res, idx, keepStock, outDir, name, p.Update)
 	if err != nil {
 		if ctx.Err() != nil {
 			return "", context.Canceled
@@ -340,7 +362,7 @@ func (s *Session) CacheSize() int64 {
 func (s *Session) ClearCache() error { return s.src.Cache.Clear() }
 
 func (s *Session) build(ctx context.Context, m *manifest.Manifest, res *catalog.Resolution,
-	idx *source.Index, outDir, name string, report func(string, float64)) (*resultJSON, error) {
+	idx *source.Index, keepStock []string, outDir, name string, report func(string, float64)) (*resultJSON, error) {
 
 	report("Fetching payloads…", 0)
 	var (
@@ -354,7 +376,8 @@ func (s *Session) build(ctx context.Context, m *manifest.Manifest, res *catalog.
 		total += f.Download()
 	}
 	plan, err := stage.Build(ctx, s.src, m, res, stage.Options{
-		Workers: 4,
+		Workers:   4,
+		KeepStock: keepStock,
 		Progress: func(f manifest.File, n, want int64) {
 			mu.Lock()
 			defer mu.Unlock()
@@ -455,6 +478,20 @@ func (s *Session) selection() []string {
 	return out
 }
 
+func (s *Session) keepStockIDs() []string {
+	out := []string{}
+	if s.res == nil {
+		return out
+	}
+	for _, p := range s.res.Packages {
+		if s.keepStock[p.ID] {
+			out = append(out, p.ID)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 func (s *Session) conflictsWithAny(id string, taken map[string]bool) bool {
 	for _, other := range s.cat.ConflictsWith(id) {
 		if taken[other] {
@@ -482,6 +519,7 @@ func (s *Session) state() string {
 		st.Count = len(s.res.Packages)
 		st.Size = s.res.Size
 		st.Variant = s.matchingVariant()
+		st.KeepStock = s.keepStockIDs()
 	}
 	b, _ := json.Marshal(st)
 	return string(b)

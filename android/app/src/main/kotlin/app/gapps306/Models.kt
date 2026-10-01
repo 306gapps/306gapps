@@ -44,6 +44,7 @@ data class Package(
     val required: Boolean = false,
     val experimental: Boolean = false,
     val experimentalNote: String = "",
+    val replaces: Boolean = false,
 )
 
 @Serializable
@@ -56,10 +57,14 @@ data class Selection(
     val count: Int = 0,
     val size: Long = 0,
     val variant: String = "",
+    val keepStock: List<String> = emptyList(),
     val error: String = "",
 ) {
     @kotlinx.serialization.Transient
     val set: Set<String> = selected.toSet()
+
+    @kotlinx.serialization.Transient
+    val kept: Set<String> = keepStock.toSet()
 }
 
 @Serializable

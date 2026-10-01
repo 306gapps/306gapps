@@ -93,6 +93,7 @@ object Gapps {
 
     suspend fun toggle(id: String, on: Boolean) = select { session.toggle(id, on) }
     suspend fun setGroup(id: String, on: Boolean) = select { session.setGroup(id, on) }
+    suspend fun setKeepStock(id: String, on: Boolean) = select { session.setKeepStock(id, on) }
     suspend fun applyVariant(id: String) = select { session.applyVariant(id) }
 
     private suspend fun select(op: () -> String) = io {
