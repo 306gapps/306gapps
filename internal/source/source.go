@@ -27,6 +27,9 @@ type Index struct {
 	Repo     string       `json:"repo"`
 	Updated  time.Time    `json:"updated"`
 	Releases []ReleaseRef `json:"releases"`
+	// MirrorBase is the preferred download host for assets; the per-release
+	// asset_base (GitHub) stays as the fallback.
+	MirrorBase string `json:"mirror_base,omitempty"`
 	// Tools are helper binaries, versioned with the assets repo so a new busybox
 	// does not need a new release of the builder.
 	Tools Tools `json:"tools,omitempty"`
@@ -125,6 +128,9 @@ type Source struct {
 	Root   string
 	Cache  *Cache
 	Client *http.Client
+	// mirrorBase, when set (from the index), is tried before each asset's own
+	// base; the base remains the fallback.
+	mirrorBase string
 }
 
 func New(root string, cache *Cache) *Source {
@@ -231,6 +237,7 @@ func (s *Source) Index(ctx context.Context) (*Index, error) {
 	if idx.Schema != IndexSchema {
 		return nil, fmt.Errorf("index schema %d unsupported (want %d)", idx.Schema, IndexSchema)
 	}
+	s.mirrorBase = idx.MirrorBase
 	// A fresh assets repo legitimately has no releases yet; the caller decides if that matters.
 	return &idx, nil
 }
@@ -272,6 +279,32 @@ func (s *Source) Manifest(ctx context.Context, ref ReleaseRef) (*manifest.Manife
 	return m, nil
 }
 
+// openAsset opens a content-addressed asset, preferring the mirror and falling
+// back to the asset's own base. A ref already carrying a scheme is opened as-is.
+func (s *Source) openAsset(ctx context.Context, asset, base string) (io.ReadCloser, int64, error) {
+	if strings.Contains(asset, "://") {
+		return s.open(ctx, asset)
+	}
+	var refs []string
+	if s.mirrorBase != "" {
+		refs = append(refs, strings.TrimSuffix(s.mirrorBase, "/")+"/"+asset)
+	}
+	if base != "" {
+		refs = append(refs, strings.TrimSuffix(base, "/")+"/"+asset)
+	} else {
+		refs = append(refs, asset)
+	}
+	var rc io.ReadCloser
+	var n int64
+	var err error
+	for _, ref := range refs {
+		if rc, n, err = s.open(ctx, ref); err == nil {
+			return rc, n, nil
+		}
+	}
+	return nil, 0, err
+}
+
 // Fetch returns a local path to a verified copy of f, downloading only on a cache miss.
 func (s *Source) Fetch(ctx context.Context, m *manifest.Manifest, f manifest.File, p Progress) (string, error) {
 	if s.Cache.Has(f.SHA256) {
@@ -281,11 +314,7 @@ func (s *Source) Fetch(ctx context.Context, m *manifest.Manifest, f manifest.Fil
 		return s.Cache.Get(f.SHA256)
 	}
 
-	ref := f.Asset
-	if base := m.Release.AssetBase; base != "" && !strings.Contains(ref, "://") {
-		ref = strings.TrimSuffix(base, "/") + "/" + ref
-	}
-	rc, total, err := s.open(ctx, ref)
+	rc, total, err := s.openAsset(ctx, f.Asset, m.Release.AssetBase)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", f.Path, err)
 	}
@@ -324,11 +353,7 @@ func (s *Source) FetchPayload(ctx context.Context, p Payload) (string, error) {
 	if s.Cache.Has(p.SHA256) {
 		return s.Cache.Get(p.SHA256)
 	}
-	ref := p.Asset
-	if p.Base != "" && !strings.Contains(ref, "://") {
-		ref = strings.TrimSuffix(p.Base, "/") + "/" + ref
-	}
-	rc, _, err := s.open(ctx, ref)
+	rc, _, err := s.openAsset(ctx, p.Asset, p.Base)
 	if err != nil {
 		return "", fmt.Errorf("fetch %s: %w", p.Asset, err)
 	}

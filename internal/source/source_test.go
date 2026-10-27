@@ -194,3 +194,44 @@ func TestChangelogMissingIsNotAnError(t *testing.T) {
 		t.Fatalf("want (nil, nil), got (%v, %v)", e, err)
 	}
 }
+
+func TestOpenAssetPrefersMirrorThenFallsBack(t *testing.T) {
+	github := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/gh/x" {
+			io.WriteString(w, "github")
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer github.Close()
+	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/x" {
+			io.WriteString(w, "mirror")
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer mirror.Close()
+
+	read := func(s *Source) string {
+		rc, _, err := s.openAsset(context.Background(), "x", github.URL+"/gh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rc.Close()
+		b, _ := io.ReadAll(rc)
+		return string(b)
+	}
+
+	hit := New("", nil)
+	hit.mirrorBase = mirror.URL
+	if got := read(hit); got != "mirror" {
+		t.Errorf("mirror up: got %q, want mirror", got)
+	}
+
+	miss := New("", nil)
+	miss.mirrorBase = mirror.URL + "/missing"
+	if got := read(miss); got != "github" {
+		t.Errorf("mirror 404: got %q, want github fallback", got)
+	}
+}
