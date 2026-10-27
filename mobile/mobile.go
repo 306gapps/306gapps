@@ -195,6 +195,23 @@ func (s *Session) State() string {
 	return s.state()
 }
 
+type changelogEntryJSON struct {
+	Date  string `json:"date"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// Changelog returns the package changelog as a JSON array, or "[]" if none.
+func (s *Session) Changelog() string {
+	entries, _ := s.src.Changelog(context.Background())
+	out := []changelogEntryJSON{}
+	for _, e := range entries {
+		out = append(out, changelogEntryJSON{e.Date, e.Title, e.Body})
+	}
+	b, _ := json.Marshal(out)
+	return string(b)
+}
+
 // Toggle ticks or unticks one package. Taking one side of a conflict drops the other.
 func (s *Session) Toggle(id string, on bool) string {
 	s.mu.Lock()

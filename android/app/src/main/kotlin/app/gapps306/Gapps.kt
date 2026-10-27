@@ -91,6 +91,11 @@ object Gapps {
             }
     }
 
+    suspend fun changelog(): List<ChangelogEntry> = io {
+        runCatching { json.decodeFromString<List<ChangelogEntry>>(session.changelog()) }
+            .getOrDefault(emptyList())
+    }
+
     suspend fun toggle(id: String, on: Boolean) = select { session.toggle(id, on) }
     suspend fun setGroup(id: String, on: Boolean) = select { session.setGroup(id, on) }
     suspend fun setKeepStock(id: String, on: Boolean) = select { session.setKeepStock(id, on) }

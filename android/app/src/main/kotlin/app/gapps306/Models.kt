@@ -51,6 +51,9 @@ data class Package(
 data class Variant(val id: String, val name: String, val summary: String = "")
 
 @Serializable
+data class ChangelogEntry(val date: String = "", val title: String = "", val body: String = "")
+
+@Serializable
 data class Selection(
     val selected: List<String> = emptyList(),
     val implied: Map<String, List<String>> = emptyMap(),

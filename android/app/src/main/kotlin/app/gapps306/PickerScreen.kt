@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -78,9 +79,14 @@ fun PickerScreen(
     val ctx = LocalContext.current
     var naming by rememberSaveable { mutableStateOf(false) }
     var expert by rememberSaveable { mutableStateOf(false) }
+    var showChangelog by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("306Gapps") }) },
+        topBar = {
+            TopAppBar(title = { Text("306Gapps") }, actions = {
+                TextButton(onClick = { showChangelog = true }) { Text("What's new") }
+            })
+        },
         bottomBar = {
             BottomBar(picker, building = build is BuildStatus.Running, onBuild = { naming = true })
         },
@@ -119,6 +125,41 @@ fun PickerScreen(
         )
     }
     BuildDialog(build, onSave, onShare)
+    if (showChangelog) {
+        ChangelogDialog(onDismiss = { showChangelog = false })
+    }
+}
+
+@Composable
+private fun ChangelogDialog(onDismiss: () -> Unit) {
+    var entries by remember { mutableStateOf<List<ChangelogEntry>?>(null) }
+    LaunchedEffect(Unit) { entries = Gapps.changelog() }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Package updates") },
+        text = {
+            val e = entries
+            when {
+                e == null -> Box(Modifier.fillMaxWidth(), Alignment.Center) { CircularProgressIndicator() }
+                e.isEmpty() -> Text("No package updates to show.")
+                else -> LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(e) { c ->
+                        Column(Modifier.padding(vertical = 6.dp)) {
+                            Text(c.title, style = MaterialTheme.typography.titleSmall)
+                            if (c.date.isNotEmpty()) {
+                                Text(c.date, style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            if (c.body.isNotEmpty()) {
+                                Text(c.body, style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }
 
 @Composable
