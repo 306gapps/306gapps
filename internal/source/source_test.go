@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -170,5 +172,25 @@ func TestCancellationStopsRetrying(t *testing.T) {
 	cancel()
 	if _, _, err := New(srv.URL, nil).open(ctx, "x"); !errors.Is(err, context.Canceled) {
 		t.Errorf("got %v, want context.Canceled", err)
+	}
+}
+
+func TestChangelogReadsEntries(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "changelog.json"),
+		[]byte(`{"schema":1,"entries":[{"date":"2026-10-03","title":"Defaults","body":"b"}]}`), 0o644)
+	e, err := New(dir, nil).Changelog(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(e) != 1 || e[0].Title != "Defaults" || e[0].Date != "2026-10-03" {
+		t.Fatalf("entries = %+v", e)
+	}
+}
+
+func TestChangelogMissingIsNotAnError(t *testing.T) {
+	e, err := New(t.TempDir(), nil).Changelog(context.Background())
+	if err != nil || e != nil {
+		t.Fatalf("want (nil, nil), got (%v, %v)", e, err)
 	}
 }

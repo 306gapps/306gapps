@@ -216,8 +216,10 @@ func (u *window) build() fyne.CanvasObject {
 
 	u.list = container.NewVBox()
 
+	whatsNew := widget.NewButton("What's new", u.showChangelog)
+
 	top := container.NewVBox(
-		container.NewBorder(nil, nil, widget.NewLabel("Release"), nil, u.releases),
+		container.NewBorder(nil, nil, widget.NewLabel("Release"), whatsNew, u.releases),
 		container.NewBorder(nil, nil, widget.NewLabel("Variant"), nil, u.variant),
 		container.NewBorder(nil, nil, widget.NewLabel("Filter"),
 			container.NewHBox(clear, u.expertBox), u.filter),
@@ -292,6 +294,28 @@ func (u *window) loadIndex() {
 			u.status.SetText("this source has published no releases yet")
 		}
 	})
+}
+
+func (u *window) showChangelog() {
+	go func() {
+		entries, _ := u.state.src.Changelog(u.state.ctx)
+		fyne.Do(func() {
+			if len(entries) == 0 {
+				dialog.ShowInformation("Package updates",
+					"No package updates to show.", u.win)
+				return
+			}
+			var b strings.Builder
+			for _, e := range entries {
+				fmt.Fprintf(&b, "## %s — %s\n\n%s\n\n", e.Date, e.Title, e.Body)
+			}
+			rt := widget.NewRichTextFromMarkdown(b.String())
+			rt.Wrapping = fyne.TextWrapWord
+			scroll := container.NewVScroll(rt)
+			scroll.SetMinSize(fyne.NewSize(480, 420))
+			dialog.ShowCustom("Package updates", "Close", scroll, u.win)
+		})
+	}()
 }
 
 func (u *window) onRelease(label string) {

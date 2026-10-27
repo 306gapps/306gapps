@@ -37,6 +37,18 @@ type Tools struct {
 	Busybox map[string]Payload `json:"busybox,omitempty"`
 }
 
+// ChangelogEntry is one package-level change, shown in the client so users see
+// updates that ship through the assets repo without a new build of the tool.
+type ChangelogEntry struct {
+	Date  string `json:"date"`
+	Title string `json:"title"`
+	Body  string `json:"body,omitempty"`
+}
+
+type changelogFile struct {
+	Entries []ChangelogEntry `json:"entries"`
+}
+
 // Payload is a single downloadable, verified blob.
 type Payload struct {
 	Asset  string `json:"asset"`
@@ -221,6 +233,21 @@ func (s *Source) Index(ctx context.Context) (*Index, error) {
 	}
 	// A fresh assets repo legitimately has no releases yet; the caller decides if that matters.
 	return &idx, nil
+}
+
+// Changelog fetches the package changelog. Best-effort: a missing or unreadable
+// file yields no entries rather than an error, since it must never block the picker.
+func (s *Source) Changelog(ctx context.Context) ([]ChangelogEntry, error) {
+	rc, _, err := s.open(ctx, "changelog.json")
+	if err != nil {
+		return nil, nil
+	}
+	defer rc.Close()
+	var f changelogFile
+	if err := json.NewDecoder(rc).Decode(&f); err != nil {
+		return nil, nil
+	}
+	return f.Entries, nil
 }
 
 // Manifest fetches and validates one release's manifest.
