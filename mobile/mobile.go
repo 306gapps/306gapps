@@ -42,8 +42,8 @@ type Session struct {
 	selected  map[string]bool
 	keepStock map[string]bool
 	res       *catalog.Resolution
-	resErr   error
-	cancel   context.CancelFunc
+	resErr    error
+	cancel    context.CancelFunc
 }
 
 // NewSession uses the published assets repo when root is empty.
