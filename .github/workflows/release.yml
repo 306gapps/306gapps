@@ -238,9 +238,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      # Only the builds: a re-run would also fetch the previous attempt's
+      # bundle, SHA256SUMS included, and checksum the old checksums.
       - uses: actions/download-artifact@v4
         with:
           path: staging
+          pattern: bin-*
       - name: Collect
         run: |
           mkdir -p dist
