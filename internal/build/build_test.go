@@ -579,3 +579,14 @@ func TestRecoveryDeflateWhenNoXZ(t *testing.T) {
 		t.Error("deflate build should not xz the payload")
 	}
 }
+
+func TestReleaseInfoCarriesTheAPIFloorOnlyWhenSet(t *testing.T) {
+	plan := testPlan(t)
+	if strings.Contains(string(releaseInfo(plan)), "api_min=") {
+		t.Error("a Pixel release wrote an API floor")
+	}
+	plan.Release.MinAPI = 33
+	if !strings.Contains(string(releaseInfo(plan)), "\napi_min=33\n") {
+		t.Errorf("no api_min in:\n%s", releaseInfo(plan))
+	}
+}

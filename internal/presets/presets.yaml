@@ -83,3 +83,27 @@ experimental:
   setupwizard: >-
     Crash-loops first boot on some devices. If setup hangs, skip this and sign
     in from Settings afterwards.
+
+# Presets for the microG release, which is not a Pixel dump and shares none
+# of the package ids above.
+flavors:
+  microg:
+    - id: microg
+      name: microG
+      summary: >-
+        microG and its companion. Sign-in, push and location, with no app
+        store.
+      packages: [microg, microg-gsf, fakestore]
+
+    - id: microg-aurora
+      name: microG with Aurora
+      summary: >-
+        microG plus Aurora Store, for installing apps from Google Play
+        without a Google account.
+      includes: microg
+      packages: [aurorastore, auroraservices]
+
+    - id: microg-everything
+      name: Everything
+      summary: Every package in the microG release.
+      all: true

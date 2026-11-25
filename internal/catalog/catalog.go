@@ -35,6 +35,9 @@ func (c *Catalog) SetExperimental(notes map[string]string) {
 	}
 }
 
+// Flavor is the release's flavor, empty for a Pixel dump.
+func (c *Catalog) Flavor() string { return c.m.Release.Flavor }
+
 // Order is the manifest's package order, which presets resolve against.
 func (c *Catalog) Order() []string {
 	out := make([]string, len(c.m.Packages))

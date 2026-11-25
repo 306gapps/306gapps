@@ -214,8 +214,9 @@ private fun ReleasePicker(picker: Picker, onPick: (String) -> Unit) {
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text("Android ${r.version}")
-                            Text(r.id, style = MaterialTheme.typography.bodySmall)
+                            Text(r.title)
+                            Text(if (r.microg) "Instead of Google, Android ${r.version}" else r.id,
+                                style = MaterialTheme.typography.bodySmall)
                         }
                     },
                     onClick = {

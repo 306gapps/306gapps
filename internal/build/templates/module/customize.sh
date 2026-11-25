@@ -2,6 +2,7 @@
 # Runs inside the manager with $MODPATH pointing at the unpacked module.
 
 APILEVEL=$(sed -n 's/^api=//p' "$MODPATH/release.txt")
+API_MIN=$(sed -n 's/^api_min=//p' "$MODPATH/release.txt")
 NAME=$(sed -n 's/^name=//p' "$MODPATH/release.txt")
 RELEASE=$(sed -n 's/^release=//p' "$MODPATH/release.txt")
 ANDROID=$(sed -n 's/^android=//p' "$MODPATH/release.txt")
@@ -11,7 +12,11 @@ ui_print "- $NAME $RELEASE"
 ui_print "- Android $ANDROID (API $APILEVEL), $PKGCOUNT packages"
 
 DEVICE_API=$(getprop ro.build.version.sdk)
-if [ -n "$DEVICE_API" ] && [ "$DEVICE_API" != "$APILEVEL" ]; then
+if [ -n "$API_MIN" ]; then
+  if [ -n "$DEVICE_API" ] && [ "$DEVICE_API" -lt "$API_MIN" ]; then
+    abort "! package needs API $API_MIN or newer but this device is API $DEVICE_API"
+  fi
+elif [ -n "$DEVICE_API" ] && [ "$DEVICE_API" != "$APILEVEL" ]; then
   abort "! package targets API $APILEVEL but this device is API $DEVICE_API"
 fi
 

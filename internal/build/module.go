@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/306gapps/306gapps/internal/manifest"
 	"github.com/306gapps/306gapps/internal/stage"
 )
 
@@ -77,8 +78,13 @@ func moduleProp(plan *stage.Plan) []byte {
 	fmt.Fprintf(&b, "version=%s\n", plan.Release.ID)
 	fmt.Fprintf(&b, "versionCode=%d\n", versionCode(plan))
 	fmt.Fprintf(&b, "author=306gapps\n")
-	fmt.Fprintf(&b, "description=%d Google packages dumped from %s %s. Disable or remove this module to revert.\n",
-		len(plan.Packages), plan.Release.Source.Device, plan.Release.Source.Build)
+	if plan.Release.Flavor == manifest.FlavorMicroG {
+		fmt.Fprintf(&b, "description=%d microG packages (%s). Disable or remove this module to revert.\n",
+			len(plan.Packages), plan.Release.Source.Build)
+	} else {
+		fmt.Fprintf(&b, "description=%d Google packages dumped from %s %s. Disable or remove this module to revert.\n",
+			len(plan.Packages), plan.Release.Source.Device, plan.Release.Source.Build)
+	}
 	return []byte(b.String())
 }
 

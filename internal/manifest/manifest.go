@@ -53,7 +53,15 @@ type Release struct {
 	Definitions string `json:"definitions,omitempty"`
 	// Arch is the device architecture the payloads target; empty means arm64.
 	Arch string `json:"arch,omitempty"`
+	// Flavor names a release that is not a Pixel dump, such as "microg".
+	Flavor string `json:"flavor,omitempty"`
+	// MinAPI, when set, lets the release install on any API level from it up
+	// rather than only on Android.API.
+	MinAPI int `json:"min_api,omitempty"`
 }
+
+// FlavorMicroG is the microG release, which replaces Google's services.
+const FlavorMicroG = "microg"
 
 // Architecture returns the release's arch, defaulting to arm64.
 func (r Release) Architecture() string {
@@ -276,6 +284,10 @@ func (m *Manifest) Validate() error {
 	}
 	if m.Release.Android.API <= 0 {
 		add("release.android.api must be positive, got %d", m.Release.Android.API)
+	}
+	if m.Release.MinAPI < 0 || m.Release.MinAPI > m.Release.Android.API {
+		add("release.min_api %d must be between 0 and release.android.api %d",
+			m.Release.MinAPI, m.Release.Android.API)
 	}
 
 	groups := map[string]bool{}

@@ -134,6 +134,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m.refs[i].Created.After(m.refs[j].Created)
 		})
+		m.refs = append(m.refs, msg.index.Flavors...)
 		m.step = stepRelease
 		return m, nil
 
@@ -401,6 +402,9 @@ func (m *Model) View() string {
 		for i, r := range m.refs {
 			mark := "  "
 			line := fmt.Sprintf("Android %-4s  %s  %s %s", r.Android.Version, r.ID, r.Device, r.Build)
+			if r.Flavor != "" {
+				line = r.Label()
+			}
 			if i == m.refIdx {
 				mark = cursorOn.Render("> ")
 				line = cursorOn.Render(line)

@@ -89,6 +89,39 @@ re-publishing anything:
 A preset only ever names packages; anything a given release does not ship is
 dropped rather than failing.
 
+### microG instead of Google
+
+The release list also offers **microG**, an open replacement for Google Play
+services, below the Android versions. It is one release that installs on
+Android 13 and newer, so it does not follow a Pixel build. Pick it in place of
+an Android version, or from the command line:
+
+```
+306gapps build -release microg -variant microg-aurora
+```
+
+| package | what it is |
+| --- | --- |
+| `microg` | microG Services, with its permissions. Required. |
+| `microg-gsf` | the Services Framework proxy. Required. |
+| `fakestore` | microG Companion, which answers apps looking for the Play Store |
+| `aurorastore` | Aurora Store, for installing apps from Google Play |
+| `auroraservices` | lets Aurora Store install without asking each time |
+| `fdroidpriv` | lets F-Droid install without asking each time |
+
+The presets are `microg`, `microg-aurora` and `microg-everything`.
+
+microG itself and its Services Framework proxy install to `/system`, so
+`/system` needs about 145 MB free; the installer checks before writing
+anything. The companion and stores go to `/product`. A small framework overlay
+makes microG the network location and geocoding provider, even on devices
+whose own configuration names another one.
+
+microG needs a ROM with **signature spoofing**. Without it microG installs and
+runs, but Google sign-in and push messages do not work. Installing it removes
+Google's Play services, Services Framework and Play Store if the ROM has them,
+and cleans up after the old standalone microG installer.
+
 ### The terminal picker
 
 `306gapps pick` walks through four screens: release, apps, format, build.

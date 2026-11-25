@@ -128,7 +128,7 @@ func TestBuiltinResolvesAgainstItsOwnIds(t *testing.T) {
 
 func TestRemoteSupersedesBuiltin(t *testing.T) {
 	body := `{"schema":1,"variants":[{"id":"only","name":"Only","packages":["gmscore"]}]}`
-	defs, _, origin := Load(context.Background(), stub{body: body})
+	defs, _, origin := Load(context.Background(), stub{body: body}, "")
 	if origin != OriginRemote {
 		t.Errorf("origin = %q", origin)
 	}
@@ -148,7 +148,7 @@ func TestBadRemoteFallsBackToBuiltin(t *testing.T) {
 		"no variants":    {body: `{"schema":1,"variants":[]}`},
 		"empty document": {body: `{}`},
 	} {
-		defs, _, origin := Load(context.Background(), s)
+		defs, _, origin := Load(context.Background(), s, "")
 		if origin != OriginBuiltin {
 			t.Errorf("%s: origin = %q", name, origin)
 		}
@@ -159,18 +159,20 @@ func TestBadRemoteFallsBackToBuiltin(t *testing.T) {
 }
 
 func TestNoSourceUsesBuiltin(t *testing.T) {
-	defs, _, origin := Load(context.Background(), nil)
+	defs, _, origin := Load(context.Background(), nil, "")
 	if origin != OriginBuiltin || len(defs) == 0 {
 		t.Errorf("origin %q, %d presets", origin, len(defs))
 	}
 }
 
 type target struct {
-	order []string
-	got   []manifest.Variant
-	exp   map[string]string
+	flavor string
+	order  []string
+	got    []manifest.Variant
+	exp    map[string]string
 }
 
+func (t *target) Flavor() string                      { return t.flavor }
 func (t *target) Order() []string                     { return t.order }
 func (t *target) SetVariants(v []manifest.Variant)    { t.got = v }
 func (t *target) SetExperimental(m map[string]string) { t.exp = m }
@@ -222,11 +224,41 @@ func TestBuiltinFlagsSetupWizardExperimental(t *testing.T) {
 func TestRemoteExperimentalSupersedes(t *testing.T) {
 	body := `{"schema":1,"variants":[{"id":"x","name":"X","packages":["gmscore"]}],` +
 		`"experimental":{"gmscore":"testing only"}}`
-	_, exp, origin := Load(context.Background(), stub{body: body})
+	_, exp, origin := Load(context.Background(), stub{body: body}, "")
 	if origin != OriginRemote {
 		t.Fatalf("origin = %q", origin)
 	}
 	if exp["gmscore"] != "testing only" {
 		t.Errorf("experimental = %v", exp)
+	}
+}
+
+func TestMicroGGetsItsOwnPresets(t *testing.T) {
+	ids := []string{"microg", "microg-gsf", "fakestore", "aurorastore", "auroraservices", "fdroidpriv"}
+	tg := &target{flavor: manifest.FlavorMicroG, order: ids}
+	Apply(context.Background(), nil, tg)
+	if len(tg.got) == 0 {
+		t.Fatal("no microG presets")
+	}
+	for _, v := range tg.got {
+		if len(v.Packages) == 0 {
+			t.Errorf("preset %s resolves to nothing against the microG release", v.ID)
+		}
+	}
+}
+
+func TestPixelPresetsLeaveOutMicroG(t *testing.T) {
+	for _, d := range Builtin() {
+		if strings.HasPrefix(d.ID, "microg") {
+			t.Errorf("microG preset %s offered for Pixel releases", d.ID)
+		}
+	}
+}
+
+func TestRemoteWithoutFlavorsKeepsBuiltinMicroG(t *testing.T) {
+	body := `{"schema":1,"variants":[{"id":"x","name":"X","packages":["gmscore"]}]}`
+	defs, _, origin := Load(context.Background(), stub{body: body}, manifest.FlavorMicroG)
+	if origin != OriginBuiltin || len(defs) == 0 {
+		t.Errorf("origin %q, %d presets", origin, len(defs))
 	}
 }

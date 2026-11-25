@@ -299,6 +299,9 @@ func releaseInfo(plan *stage.Plan) []byte {
 	fmt.Fprintf(&b, "release=%s\n", plan.Release.ID)
 	fmt.Fprintf(&b, "android=%s\n", plan.Release.Android.Version)
 	fmt.Fprintf(&b, "api=%d\n", plan.Release.Android.API)
+	if plan.Release.MinAPI > 0 {
+		fmt.Fprintf(&b, "api_min=%d\n", plan.Release.MinAPI)
+	}
 	fmt.Fprintf(&b, "device=%s\n", plan.Release.Source.Device)
 	fmt.Fprintf(&b, "build=%s\n", plan.Release.Source.Build)
 	fmt.Fprintf(&b, "packages=%d\n", len(plan.Packages))

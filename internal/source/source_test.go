@@ -235,3 +235,35 @@ func TestOpenAssetPrefersMirrorThenFallsBack(t *testing.T) {
 		t.Errorf("mirror 404: got %q, want github fallback", got)
 	}
 }
+
+func TestChoicesListFlavorsAfterTheAndroidVersions(t *testing.T) {
+	mg := ReleaseRef{ID: "microg-0.3.18", Flavor: manifest.FlavorMicroG,
+		Android: manifest.Android{API: 33, Version: "13+"}, Build: "0.3.18"}
+	idx := &Index{
+		Releases: []ReleaseRef{
+			ref("a16", 36, "2026-09-01T00:00:00Z"),
+			ref("a17", 37, "2026-09-24T00:00:00Z"),
+		},
+		Flavors: []ReleaseRef{mg},
+	}
+	var got []string
+	for _, r := range idx.Choices() {
+		got = append(got, r.ID)
+	}
+	if strings.Join(got, ",") != "a17,a16,microg-0.3.18" {
+		t.Errorf("choices = %v", got)
+	}
+	// A flavor's API is a floor, not a version; Latest must not pick it.
+	if r, _ := idx.Latest(33); r.ID == mg.ID {
+		t.Error("Latest returned the microG flavor")
+	}
+	if r, ok := idx.Find(mg.ID); !ok || r.Flavor != manifest.FlavorMicroG {
+		t.Errorf("Find(%q) = %+v, %v", mg.ID, r, ok)
+	}
+	if r, ok := idx.Flavor(manifest.FlavorMicroG); !ok || r.ID != mg.ID {
+		t.Errorf("Flavor = %+v, %v", r, ok)
+	}
+	if l := mg.Label(); !strings.HasPrefix(l, "microG 0.3.18") {
+		t.Errorf("label = %q", l)
+	}
+}

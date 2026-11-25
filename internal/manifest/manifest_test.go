@@ -255,3 +255,19 @@ func TestLoadExplainsASchemaMismatch(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateAcceptsAnAPIFloor(t *testing.T) {
+	m := base()
+	m.Release.Flavor = FlavorMicroG
+	m.Release.MinAPI = 33
+	m.Release.Android.API = 33
+	if err := m.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestValidateRejectsAFloorAboveTheAPI(t *testing.T) {
+	m := base()
+	m.Release.MinAPI = 37
+	wantErr(t, m, "min_api")
+}

@@ -43,6 +43,16 @@ type file struct {
 	Schema       int               `json:"schema" yaml:"schema"`
 	Variants     []Definition      `json:"variants" yaml:"variants"`
 	Experimental map[string]string `json:"experimental,omitempty" yaml:"experimental"`
+	// Flavors are the presets for releases that are not Pixel dumps, keyed by
+	// flavor. A separate key so builds that predate it never offer them.
+	Flavors map[string][]Definition `json:"flavors,omitempty" yaml:"flavors"`
+}
+
+func (f file) variants(flavor string) []Definition {
+	if flavor == "" {
+		return f.Variants
+	}
+	return f.Flavors[flavor]
 }
 
 // Origin says where the presets in use came from, for the status line.
@@ -72,29 +82,30 @@ type Opener interface {
 }
 
 // Load prefers the copy on the assets repo and falls back to the built-in one.
+// flavor picks a release flavor's presets; empty means the Pixel releases'.
 //
 // Anything wrong with the remote copy -- unreachable, malformed, a schema this
 // build predates, or empty -- leaves the built-in presets in place rather than
 // leaving the picker with none.
-func Load(ctx context.Context, src Opener) ([]Definition, map[string]string, Origin) {
+func Load(ctx context.Context, src Opener, flavor string) ([]Definition, map[string]string, Origin) {
 	b := builtinFile()
 	if src == nil {
-		return b.Variants, b.Experimental, OriginBuiltin
+		return b.variants(flavor), b.Experimental, OriginBuiltin
 	}
 	rc, _, err := src.Open(ctx, Remote)
 	if err != nil {
-		return b.Variants, b.Experimental, OriginBuiltin
+		return b.variants(flavor), b.Experimental, OriginBuiltin
 	}
 	defer rc.Close()
 
 	var f file
 	if err := json.NewDecoder(io.LimitReader(rc, 1<<20)).Decode(&f); err != nil {
-		return b.Variants, b.Experimental, OriginBuiltin
+		return b.variants(flavor), b.Experimental, OriginBuiltin
 	}
-	if f.Schema != Schema || len(f.Variants) == 0 {
-		return b.Variants, b.Experimental, OriginBuiltin
+	if f.Schema != Schema || len(f.variants(flavor)) == 0 {
+		return b.variants(flavor), b.Experimental, OriginBuiltin
 	}
-	return f.Variants, f.Experimental, OriginRemote
+	return f.variants(flavor), f.Experimental, OriginRemote
 }
 
 // Resolve flattens the tier chains and drops ids the release does not ship.
@@ -161,6 +172,7 @@ func Resolve(defs []Definition, order []string) ([]manifest.Variant, error) {
 
 // Target is the part of a catalog these need.
 type Target interface {
+	Flavor() string
 	Order() []string
 	SetVariants([]manifest.Variant)
 	SetExperimental(map[string]string)
@@ -171,7 +183,7 @@ type Target interface {
 // A preset that will not resolve leaves the catalog's own alone rather than
 // emptying the picker.
 func Apply(ctx context.Context, src Opener, c Target) Origin {
-	defs, exp, origin := Load(ctx, src)
+	defs, exp, origin := Load(ctx, src, c.Flavor())
 	vs, err := Resolve(defs, c.Order())
 	if err != nil {
 		if origin == OriginBuiltin {
@@ -179,7 +191,7 @@ func Apply(ctx context.Context, src Opener, c Target) Origin {
 		}
 		// A bad remote copy should not cost the user the built-in presets.
 		b := builtinFile()
-		if vs, err = Resolve(b.Variants, c.Order()); err != nil {
+		if vs, err = Resolve(b.variants(c.Flavor()), c.Order()); err != nil {
 			return OriginBuiltin
 		}
 		exp = b.Experimental

@@ -12,8 +12,11 @@ data class Release(
     val api: Int,
     val device: String,
     val build: String,
+    val flavor: String = "",
 ) {
-    val label get() = "Android $version · $device $build"
+    val microg get() = flavor == "microg"
+    val label get() = if (microg) "microG $build · Android $version" else "Android $version · $device $build"
+    val title get() = if (microg) "microG $build" else "Android $version"
 }
 
 @Serializable

@@ -119,6 +119,33 @@ else
     || { echo "  FAIL wrong error:"; cat "$WORK/log2"; fail=1; }
 fi
 
+echo "== a release with an API floor installs on anything newer =="
+# The microG release sets api_min instead of matching one Android version.
+floor_run() {
+  local zip="$WORK/floor.zip" rom="$WORK/rom-floor"
+  rm -rf "$WORK/rebuild"; mkdir -p "$WORK/rebuild"
+  ( cd "$WORK/rebuild" && unzip -q -o "$ZIP" )
+  printf 'api_min=33\n' >> "$WORK/rebuild/installer/release.txt"
+  rm -f "$zip"; ( cd "$WORK/rebuild" && zip -qr "$zip" . )
+  rm -rf "$rom"; mkdir -p "$rom/system/system/addon.d"
+  printf 'ro.build.version.sdk=%s\n' "$1" > "$rom/system/system/build.prop"
+  rm -rf "$WORK/tmp-floor"; mkdir -p "$WORK/tmp-floor"
+  unzip -q -o "$zip" 'installer/*' -d "$WORK/tmp-floor"
+  busybox ash "$HERE/harness.sh" "$WORK/tmp-floor" "$zip" "$rom"
+}
+if floor_run 34 >"$WORK/log-floor" 2>&1; then
+  echo "  ok   installs on API 34 with a floor of 33"
+else
+  echo "  FAIL refused API 34 with a floor of 33:"; cat "$WORK/log-floor"; fail=1
+fi
+if floor_run 32 >"$WORK/log-floor" 2>&1; then
+  echo "  FAIL installed on API 32 with a floor of 33"; fail=1
+else
+  grep -q "needs API 33 or newer but this ROM is API 32" "$WORK/log-floor" \
+    && echo "  ok   refuses an API below the floor" \
+    || { echo "  FAIL wrong error:"; cat "$WORK/log-floor"; fail=1; }
+fi
+
 echo "== refuses when the partition is full =="
 sed -i 's/ro.build.version.sdk=34/ro.build.version.sdk=36/' "$ROM/system/system/build.prop"
 if FAKE_FREE=1024 install_run >"$WORK/log3" 2>&1; then

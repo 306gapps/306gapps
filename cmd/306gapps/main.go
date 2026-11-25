@@ -148,7 +148,8 @@ func newSource(root, cache string) *source.Source {
 	return source.New(root, source.NewCache(cache))
 }
 
-// resolveRelease finds a release by ID, by "android:<version>", or the newest one.
+// resolveRelease finds a release by ID, by Android version, by flavor name such
+// as "microg", or the newest one.
 func resolveRelease(idx *source.Index, spec string) (source.ReleaseRef, error) {
 	if spec == "" || spec == "latest" {
 		ref, ok := idx.Latest(0)
@@ -157,10 +158,11 @@ func resolveRelease(idx *source.Index, spec string) (source.ReleaseRef, error) {
 		}
 		return ref, nil
 	}
-	for _, r := range idx.Releases {
-		if r.ID == spec {
-			return r, nil
-		}
+	if r, ok := idx.Find(spec); ok {
+		return r, nil
+	}
+	if r, ok := idx.Flavor(strings.ToLower(spec)); ok {
+		return r, nil
 	}
 	// Accept a bare Android version, with or without the "a" every release id carries.
 	version := strings.TrimPrefix(strings.ToLower(spec), "a")
@@ -174,6 +176,9 @@ func resolveRelease(idx *source.Index, spec string) (source.ReleaseRef, error) {
 	var have []string
 	for _, r := range idx.Releases {
 		have = append(have, r.ID)
+	}
+	for _, r := range idx.Flavors {
+		have = append(have, r.Flavor)
 	}
 	return source.ReleaseRef{}, fmt.Errorf("no release %q (have: %s)", spec, strings.Join(have, ", "))
 }
@@ -238,9 +243,9 @@ func cmdList(ctx context.Context, args []string) error {
 	}
 	if fs.NArg() == 0 {
 		if *asJSON {
-			return json.NewEncoder(os.Stdout).Encode(idx.Releases)
+			return json.NewEncoder(os.Stdout).Encode(append(idx.Releases, idx.Flavors...))
 		}
-		if len(idx.Releases) == 0 {
+		if len(idx.Releases) == 0 && len(idx.Flavors) == 0 {
 			fmt.Fprintln(os.Stderr,
 				"this source has published no releases yet")
 			return nil
@@ -252,6 +257,10 @@ func cmdList(ctx context.Context, args []string) error {
 		for _, r := range refs {
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
 				r.ID, r.Android.Version, r.Device, r.Build, r.Created.Format("2006-01-02"))
+		}
+		for _, r := range idx.Flavors {
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+				r.ID, r.Android.Version, r.Flavor, r.Build, r.Created.Format("2006-01-02"))
 		}
 		return w.Flush()
 	}
@@ -363,7 +372,7 @@ func checkTrailingFlags(fs *flag.FlagSet) error {
 func cmdBuild(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("build", flag.ContinueOnError)
 	src, cache := commonFlags(fs)
-	release := fs.String("release", "latest", "release ID, Android version, or \"latest\"")
+	release := fs.String("release", "latest", "release ID, Android version, \"microg\", or \"latest\"")
 	pkgs := fs.String("packages", "", "comma-separated package IDs (default: the release's defaults)")
 	variant := fs.String("variant", "", "preset selection: core, basic, omni, stock, full, everything")
 	confName := fs.String("config", "", "a selection saved from the picker")

@@ -266,13 +266,8 @@ func (u *window) loadIndex() {
 		want = u.preferredRelease(u.app)
 	}
 	var labels []string
-	for _, api := range idx.APIs() {
-		ref, ok := idx.Latest(api)
-		if !ok {
-			continue
-		}
-		label := fmt.Sprintf("Android %s — %s (%s %s)",
-			ref.Android.Version, ref.ID, ref.Device, ref.Build)
+	for _, ref := range idx.Choices() {
+		label := ref.Label()
 		u.refs[label] = ref
 		labels = append(labels, label)
 	}

@@ -25,6 +25,7 @@ NAME=$(sed -n 's/^name=//p' "$TMP/installer/release.txt")
 RELEASE=$(sed -n 's/^release=//p' "$TMP/installer/release.txt")
 ANDROID=$(sed -n 's/^android=//p' "$TMP/installer/release.txt")
 APILEVEL=$(sed -n 's/^api=//p' "$TMP/installer/release.txt")
+API_MIN=$(sed -n 's/^api_min=//p' "$TMP/installer/release.txt")
 PKGCOUNT=$(sed -n 's/^packages=//p' "$TMP/installer/release.txt")
 
 # Payloads may be xz-compressed (installer/compression). Decompression needs
@@ -60,10 +61,17 @@ done
 
 SYSROOT=$(dirname "$BUILDPROP")
 DEVICE_API=$(sed -n 's/^ro.build.version.sdk=//p' "$BUILDPROP" | head -n1)
-if [ -n "$DEVICE_API" ] && [ "$DEVICE_API" != "$APILEVEL" ]; then
-  abort "package targets API $APILEVEL but this ROM is API $DEVICE_API"
+if [ -n "$API_MIN" ]; then
+  if [ -n "$DEVICE_API" ] && [ "$DEVICE_API" -lt "$API_MIN" ]; then
+    abort "package needs API $API_MIN or newer but this ROM is API $DEVICE_API"
+  fi
+  ui_print "- ROM is API ${DEVICE_API:-unknown}, $API_MIN or newer is fine"
+else
+  if [ -n "$DEVICE_API" ] && [ "$DEVICE_API" != "$APILEVEL" ]; then
+    abort "package targets API $APILEVEL but this ROM is API $DEVICE_API"
+  fi
+  ui_print "- ROM matches API $APILEVEL"
 fi
-ui_print "- ROM matches API $APILEVEL"
 
 # ---- mount every partition the package writes to ---------------------------
 

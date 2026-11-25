@@ -65,9 +65,15 @@ type releaseJSON struct {
 	API     int    `json:"api"`
 	Device  string `json:"device"`
 	Build   string `json:"build"`
+	Flavor  string `json:"flavor,omitempty"`
 }
 
-// Releases returns the newest build of each Android version, newest version first.
+func newReleaseJSON(r source.ReleaseRef) releaseJSON {
+	return releaseJSON{r.ID, r.Android.Version, r.Android.API, r.Device, r.Build, r.Flavor}
+}
+
+// Releases returns the newest build of each Android version, newest version
+// first, then the flavors such as microG.
 func (s *Session) Releases() (string, error) {
 	idx, err := s.src.Index(context.Background())
 	if err != nil {
@@ -78,10 +84,8 @@ func (s *Session) Releases() (string, error) {
 	s.mu.Unlock()
 
 	out := []releaseJSON{}
-	for _, api := range idx.APIs() {
-		if r, ok := idx.Latest(api); ok {
-			out = append(out, releaseJSON{r.ID, r.Android.Version, r.Android.API, r.Device, r.Build})
-		}
+	for _, r := range idx.Choices() {
+		out = append(out, newReleaseJSON(r))
 	}
 	return marshal(out)
 }
@@ -126,14 +130,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 	if idx == nil {
 		return "", errors.New("no release index loaded")
 	}
-	var ref source.ReleaseRef
-	found := false
-	for _, r := range idx.Releases {
-		if r.ID == releaseID {
-			ref, found = r, true
-			break
-		}
-	}
+	ref, found := idx.Find(releaseID)
 	if !found {
 		return "", fmt.Errorf("no release %q", releaseID)
 	}
@@ -156,7 +153,7 @@ func (s *Session) Load(releaseID string) (string, error) {
 	s.mu.Unlock()
 
 	out := catalogJSON{
-		Release:  releaseJSON{ref.ID, ref.Android.Version, ref.Android.API, ref.Device, ref.Build},
+		Release:  newReleaseJSON(ref),
 		Groups:   []groupJSON{},
 		Variants: []variantJSON{},
 	}

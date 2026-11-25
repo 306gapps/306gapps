@@ -26,7 +26,11 @@ func (u *window) currentConfig(name string) config.Config {
 		Target:    string(u.state.target),
 	}
 	if u.cat != nil {
-		c.Release = u.cat.Manifest().Release.Android.Version
+		r := u.cat.Manifest().Release
+		c.Release = r.Android.Version
+		if r.Flavor != "" {
+			c.Release = r.Flavor
+		}
 	}
 	return c
 }

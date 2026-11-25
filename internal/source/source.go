@@ -33,6 +33,9 @@ type Index struct {
 	// Tools are helper binaries, versioned with the assets repo so a new busybox
 	// does not need a new release of the builder.
 	Tools Tools `json:"tools,omitempty"`
+	// Flavors are releases that are not Pixel dumps, such as microG. Kept out
+	// of Releases so builds that predate them never offer one.
+	Flavors []ReleaseRef `json:"flavors,omitempty"`
 }
 
 // Tools lists helper binaries, keyed by device architecture.
@@ -74,6 +77,16 @@ type ReleaseRef struct {
 	// Manifest and AssetBase are resolved relative to the source root.
 	Manifest  string `json:"manifest"`
 	AssetBase string `json:"asset_base"`
+	// Flavor is set on entries from Index.Flavors.
+	Flavor string `json:"flavor,omitempty"`
+}
+
+// Label is how pickers name a release.
+func (r ReleaseRef) Label() string {
+	if r.Flavor == manifest.FlavorMicroG {
+		return fmt.Sprintf("microG %s — Android %s", r.Build, r.Android.Version)
+	}
+	return fmt.Sprintf("Android %s — %s (%s %s)", r.Android.Version, r.ID, r.Device, r.Build)
 }
 
 func (r ReleaseRef) String() string {
@@ -98,6 +111,43 @@ func (i *Index) Latest(api int) (ReleaseRef, bool) {
 		}
 	}
 	return best, found
+}
+
+// Choices is what a picker offers: the newest build of each Android version,
+// newest first, then the flavors.
+func (i *Index) Choices() []ReleaseRef {
+	var out []ReleaseRef
+	for _, api := range i.APIs() {
+		if r, ok := i.Latest(api); ok {
+			out = append(out, r)
+		}
+	}
+	return append(out, i.Flavors...)
+}
+
+// Find returns a release or flavor by ID.
+func (i *Index) Find(id string) (ReleaseRef, bool) {
+	for _, r := range i.Releases {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	for _, r := range i.Flavors {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return ReleaseRef{}, false
+}
+
+// Flavor returns the published release of a flavor, such as "microg".
+func (i *Index) Flavor(name string) (ReleaseRef, bool) {
+	for _, r := range i.Flavors {
+		if r.Flavor == name {
+			return r, true
+		}
+	}
+	return ReleaseRef{}, false
 }
 
 // APIs returns the distinct API levels present, newest first.
